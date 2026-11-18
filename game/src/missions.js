@@ -1,16 +1,19 @@
-// missions.js — Mara Voss's seven-job story chain. Each mission is a list of
-// stages (meet, steal, deliver, pick up, lose the heat, fight, ram) run by one
-// small state machine; the HUD reads G.mission for its card, and completing a
-// job pays cash and rep, autosaves, and queues the next call from Mara.
+// missions.js — Mara Voss's seven jobs, CH1 First Wheels to CH7 The Tide Job.
+// A job is a short list of stages — go somewhere, steal something, deliver it,
+// pick something up, lose the heat, put someone on the sand, ram a convoy —
+// walked by one small state machine. The HUD card reads G.mission; finishing
+// a job pays out, autosaves, and Mara calls again a few seconds later.
 
 import { G, addCash, addRep, commitCrime } from './state.js';
-import { LOCATIONS } from './city.js';
+import { LOCATIONS, nearestNode } from './city.js';
+import { setCarColor } from './vehicles.js';
 import { sfx } from './audio.js';
 
 const L = LOCATIONS;
 
-// Stage fields: type, label (objective line), next (the NEXT line), target
-// {x,z} for the beam/minimap, plus per-type data filled in by setup().
+// Stage fields: type; label (the objective line); next (the NEXT line);
+// x/z/r (a place and its arrival radius); plus type-specific extras the
+// setup step fills in (the car to steal, the convoy to stop, and so on).
 export const MISSIONS = [
   {
     chapter: 'CH 1', title: 'First Wheels', pay: 400, rep: 60,
@@ -18,7 +21,7 @@ export const MISSIONS = [
     stages: [
       { type: 'goto', x: L.garage.x, z: L.garage.z, r: 12, label: 'Meet Mara at her garage in Old Marina.', next: 'She is expecting you.' },
       { type: 'steal', model: 'vela', x: 334, z: -40, label: 'Steal the grey Vela on the Neon Mile.', next: 'Then bring it home to Mara.' },
-      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, label: 'Deliver the Vela to Mara\'s garage.', next: 'Cash on delivery.' },
+      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, label: "Deliver the Vela to Mara's garage.", next: 'Cash on delivery.' },
     ],
     outro: 'Clean work. The bay is full of cars, and now one of them is ours.',
   },
@@ -47,7 +50,7 @@ export const MISSIONS = [
     stages: [
       { type: 'goto', x: L.cayoHouse.x, z: L.cayoHouse.z, r: 13, label: 'Cross the causeway to Cayo Verde.', next: 'The safehouse is on the island.' },
       { type: 'pickup', x: L.cayoHouse.x + 8, z: L.cayoHouse.z + 10, r: 3.4, label: 'Take the cash case.', next: 'Expect company on the way back.', alarm: 3 },
-      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, anyVehicle: true, label: 'Bring the case to Mara\'s garage.', next: 'Do not stop for the roadblocks.' },
+      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, anyVehicle: true, label: "Bring the case to Mara's garage.", next: 'Do not stop for the roadblocks.' },
     ],
     outro: 'Counted and clean. The island money spends the same as any other.',
   },
@@ -57,7 +60,7 @@ export const MISSIONS = [
     stages: [
       { type: 'goto', x: L.beachHut.x, z: L.beachHut.z, r: 14, label: 'Find the debtors at the lifeguard hut.', next: 'They sunbathe. You educate.' },
       { type: 'fight', count: 2, x: L.beachHut.x, z: L.beachHut.z, label: 'Put both debtors on the sand.', next: 'Fists only — keep it friendly.' },
-      { type: 'goto', x: L.club.x, z: L.club.z, r: 12, label: 'Report back at Club Vela.', next: 'Mara\'s cut is waiting.' },
+      { type: 'goto', x: L.club.x, z: L.club.z, r: 12, label: 'Report back at Club Vela.', next: "Mara's cut is waiting." },
     ],
     outro: 'They paid in full, plus a tip for the lesson. The bay respects you now.',
   },
@@ -77,15 +80,15 @@ export const MISSIONS = [
     stages: [
       { type: 'goto', x: L.showroom.x, z: L.showroom.z, r: 13, label: 'Go to the Cabrillo showroom.', next: 'The GT is on the floor, keys in.' },
       { type: 'steal', model: 'cabrillo', x: L.showroom.x + 4, z: L.showroom.z + 20, alarm: 4, label: 'Steal the Cabrillo GT. Escape with the cash!', next: 'Lose the cops, then bring it home.' },
-      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, label: 'Bring the GT home to Mara.', next: 'Do not come near the garage with the helicopter up.' },
+      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, label: "Bring the GT home to Mara.", next: 'Do not come near the garage with the helicopter up.' },
     ],
     outro: 'That is the tide turning, Nico. Vista Marina is ours.',
   },
 ];
 
 export function createMissions(ctx) {
-  const { hud, city, spawnCar, graph } = ctx;
-  let betweenTimer = 4;
+  const { hud, city, spawnCar, graph, save } = ctx;
+  let betweenTimer = 4; // a breath between one job's end and Mara's next call
 
   function startMission(index) {
     const def = MISSIONS[index];
@@ -104,7 +107,7 @@ export function createMissions(ctx) {
       const car = spawnCar(s.model, s.x, s.z, Math.PI / 2);
       car.driver = null;
       car.missionCar = true;
-      if (s.model === 'cabrillo') setRed(car);
+      if (s.model === 'cabrillo') setCarColor(car, 0xd21f3c); // the showroom GT is red
       G.cars.push(car);
       m.data.stealCar = car;
       s.target = { x: s.x, z: s.z };
@@ -114,50 +117,44 @@ export function createMissions(ctx) {
       let marked = 0;
       for (const ped of G.peds) {
         if (marked >= s.count) break;
-        if (Math.hypot(ped.pos.x - s.x, ped.pos.z - s.z) < 60) { ped.marked = true; m.data['ped' + marked] = ped; marked++; }
+        if (Math.hypot(ped.pos.x - s.x, ped.pos.z - s.z) < 60) {
+          ped.marked = true;
+          m.data['ped' + marked] = ped;
+          marked++;
+        }
       }
-      // if the beach is empty, the debtors stroll in from the boulevard
+      // an empty beach is no excuse: the debtors stroll in from the boulevard
       while (marked < s.count) {
         const ped = G.peds[marked];
-        if (ped) { ped.pos.set(s.x + 4 + marked * 3, 0, s.z + 6); ped.marked = true; m.data['ped' + marked] = ped; }
+        if (ped) {
+          ped.pos.set(s.x + 4 + marked * 3, 0, s.z + 6);
+          ped.marked = true;
+          m.data['ped' + marked] = ped;
+        }
         marked++;
       }
     }
     if (s.type === 'ram') {
       const car = spawnCar(s.model, s.x, s.z, 0);
       car.driver = 'traffic';
-      car.hp = 260;
+      car.hp = 260; // armoured: it takes hits, it does not fold
       car.armoured = true;
-      car.route = { from: null, target: null };
-      const node = nearest(graph, s.x, s.z);
-      car.route.from = node.key;
-      car.route.target = node.adj[0];
+      car.missionConvoy = true;
+      const node = nearestNode(graph, s.x, s.z);
+      car.route = { from: node.key, target: node.adj[0] };
       car.cruise = 0.55;
-      G.cars.push(car); G.traffic.push(car);
+      G.cars.push(car);
+      G.traffic.push(car);
       m.data.convoy = car;
       m.data.ramHits = 0;
-      car.missionConvoy = true;
       s.target = { x: car.pos.x, z: car.pos.z };
     }
     if (s.type === 'lose' && s.stars) {
-      while (G.wanted < s.stars) { G.wanted += 1; }
+      while (G.wanted < s.stars) G.wanted += 1;
       G.heat = Math.max(G.heat, 0.4);
     }
     if (s.target) city.setBeam(s.target.x, s.target.z, 0xffd94d);
     else city.hideBeam();
-  }
-
-  function nearest(graph, x, z) {
-    let best = null, bd = Infinity;
-    for (const n of graph.nodes.values()) {
-      const d = (n.x - x) ** 2 + (n.z - z) ** 2;
-      if (d < bd) { bd = d; best = n; }
-    }
-    return best;
-  }
-
-  function setRed(car) {
-    car.mesh.traverse((o) => { if (o.material && o.material.shininess === 70) o.material = o.material.clone(), o.material.color.set(0xd21f3c); });
   }
 
   function completeStage(m) {
@@ -178,7 +175,7 @@ export function createMissions(ctx) {
     hud.banner('MISSION COMPLETE', `${m.def.title} · +$${m.def.pay.toLocaleString('en-US')}`);
     hud.dialogue('MARA VOSS', 'FIXER', m.def.outro, 'mara');
     sfx.cash();
-    ctx.save();
+    save();
     betweenTimer = 7;
     if (G.missionIndex >= MISSIONS.length) {
       G.storyDone = true;
@@ -186,9 +183,7 @@ export function createMissions(ctx) {
     }
   }
 
-  function distTo(x, z) {
-    return Math.hypot(G.player.pos.x - x, G.player.pos.z - z);
-  }
+  const distTo = (x, z) => Math.hypot(G.player.pos.x - x, G.player.pos.z - z);
 
   return {
     startMission,
@@ -211,7 +206,10 @@ export function createMissions(ctx) {
         case 'steal': {
           const car = m.data.stealCar;
           if (car && G.driveCar === car) {
-            if (s.alarm) { while (G.wanted < s.alarm) G.wanted += 1; commitCrime(0.2, 'showroom theft'); }
+            if (s.alarm) {
+              while (G.wanted < s.alarm) G.wanted += 1;
+              commitCrime(0.2, 'showroom theft');
+            }
             completeStage(m);
           }
           break;
@@ -225,12 +223,15 @@ export function createMissions(ctx) {
           if (G.mode === 'foot' && distTo(s.x, s.z) < s.r) {
             if (m.def.title === 'Package Run') {
               G.hasPistol = true; G.mag = 12; G.reserve = 60;
-              hud.toast('Picked up: package + Mara\'s pistol (key 2).');
+              hud.toast("Picked up: package + Mara's pistol (key 2).");
               hud.refreshWeapons();
             } else {
               hud.toast('Case secured.');
             }
-            if (s.alarm) { while (G.wanted < s.alarm) G.wanted += 1; G.heat = Math.max(G.heat, 0.5); }
+            if (s.alarm) {
+              while (G.wanted < s.alarm) G.wanted += 1;
+              G.heat = Math.max(G.heat, 0.5);
+            }
             completeStage(m);
           }
           break;
@@ -251,11 +252,14 @@ export function createMissions(ctx) {
             const ped = m.data['ped' + i];
             if (!ped) continue;
             total++;
-            if (ped.state === 'down') { m.data.downSet.add(ped.id); }
+            if (ped.state === 'down') m.data.downSet.add(ped.id);
             if (m.data.downSet.has(ped.id)) down++;
           }
           if (total > 0 && down >= total) {
-            for (let i = 0; i < s.count; i++) { const ped = m.data['ped' + i]; if (ped) ped.marked = false; }
+            for (let i = 0; i < s.count; i++) {
+              const ped = m.data['ped' + i];
+              if (ped) ped.marked = false;
+            }
             completeStage(m);
           }
           break;
@@ -268,7 +272,8 @@ export function createMissions(ctx) {
             hud.toast(`Solid hit — ${m.data.ramHits}/3.`);
             if (m.data.ramHits >= 3) {
               car.dead = true; car.speed = 0; car.hp = 0;
-              const ti = G.traffic.indexOf(car); if (ti >= 0) G.traffic.splice(ti, 1);
+              const ti = G.traffic.indexOf(car);
+              if (ti >= 0) G.traffic.splice(ti, 1);
               hud.toast('The convoy truck is stopped!');
               completeStage(m);
             }
