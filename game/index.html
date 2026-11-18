@@ -3,113 +3,93 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🌴</text></svg>">
-<title>Vista Marina — an open-world crime game</title>
+<title>Vista Marina</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%231b1035'/><circle cx='8' cy='8' r='5' fill='%23ff9a3c'/></svg>">
 <link rel="stylesheet" href="./style.css">
 <script type="importmap">
-{
-  "imports": {
-    "three": "./vendor/three/three.module.min.js"
-  }
-}
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
 </script>
 </head>
 <body>
 <canvas id="gl"></canvas>
 
-<!-- ============================ HUD ============================ -->
 <div id="hud" class="hidden">
-  <!-- the job in hand -->
+  <div id="crosshair"></div>
+
   <section id="mission-card" class="panel">
-    <div class="mc-top"><span id="mc-chapter">CH 1</span><span id="mc-title">FIRST WHEELS</span><span id="mc-timer"></span></div>
-    <div id="mc-objective">Steal a Vela sedan.</div>
-    <div class="mc-stage"><span id="mc-stage-label">STAGE 1/3</span><div class="bar"><div id="mc-stage-fill"></div></div></div>
-    <div id="mc-next"><b>NEXT</b> <span id="mc-next-text"></span></div>
+    <div class="mc-top"><span id="mc-chapter">CH 1</span><span id="mc-title">First Wheels</span></div>
+    <p id="mc-objective">…</p>
+    <div id="mc-bar"><div id="mc-bar-fill"></div></div>
+    <p id="mc-next"></p>
   </section>
 
-  <!-- who is coming for you, and how far away they are -->
-  <section id="police-panel" class="panel">
-    <div class="pp-head"><span id="pp-title">VMPD RESPONSE</span><span id="pp-code">CODE 2</span></div>
-    <ul id="pp-units"></ul>
-    <div id="pp-note"></div>
-  </section>
-
-  <!-- day, money, heat -->
-  <div id="status-cluster">
-    <div id="clock-line"><span id="clock-day">FRI</span> <span id="clock-time">18:24</span></div>
-    <div id="cash">$250</div>
-    <div id="wanted" aria-label="wanted level"></div>
-    <div id="sight-line"><span id="sight-badge">IN SIGHT</span><span id="sight-unit"></span></div>
+  <div id="top-right">
+    <div id="stars" aria-label="wanted level"></div>
+    <div id="clock">FRI 17:05</div>
+    <div id="cash">$0</div>
+    <section id="police-panel" class="panel">
+      <div class="pp-head"><span>VMPD RESPONSE</span><span id="pp-status">CLEAR</span></div>
+      <div id="pp-rows"></div>
+    </section>
   </div>
 
-  <!-- hands -->
+  <div id="vitals" class="panel">
+    <div class="bar-row"><span class="bar-label">HP</span><div class="bar"><div id="hp-fill" class="fill hp"></div></div></div>
+    <div class="bar-row"><span class="bar-label">AR</span><div class="bar"><div id="ar-fill" class="fill ar"></div></div></div>
+    <div id="rep-label">REP 1 · UNKNOWN</div>
+  </div>
+
+  <div id="speedo" class="panel hidden">
+    <div><span id="speed-val">0</span> <span class="unit">KM/H</span></div>
+    <div id="veh-name">—</div>
+    <div class="bar slim"><div id="veh-cond-fill" class="fill cond"></div></div>
+    <div id="radio">RADIO · OFF</div>
+  </div>
+
   <div id="weapons">
-    <div class="slot" id="slot-fists"><span class="slot-key">1</span><span class="slot-icon">✊</span><span class="slot-ammo">∞</span></div>
-    <div class="slot" id="slot-pistol"><span class="slot-key">2</span><span class="slot-icon">🔫</span><span class="slot-ammo" id="pistol-ammo">12/48</span></div>
+    <div id="weap-fists" class="weap active"><span class="wname">FISTS</span></div>
+    <div id="weap-pistol" class="weap"><span class="wname">PISTOL</span><span id="ammo-label">8 / 48</span></div>
   </div>
 
-  <!-- radar, health, reputation -->
-  <div id="minimap-wrap">
-    <canvas id="minimap" width="232" height="232"></canvas>
-    <div id="district">NEON MILE</div>
-    <div id="vitals">
-      <label>HEALTH</label><div class="bar hp"><div id="hp-fill"></div></div>
-      <label>ARMOUR</label><div class="bar ar"><div id="ar-fill"></div></div>
-    </div>
-    <div id="rep-line"><span id="rep-badge">REP 1</span><span id="rep-name">BAY RUNNER</span><span id="rep-xp">0 / 500</span></div>
+  <div id="map-wrap">
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="district">VISTA MARINA</div>
   </div>
 
-  <!-- the car you are in -->
-  <div id="vehicle-cluster" class="hidden">
-    <div id="radio-line">♪ <span id="radio-name">WAVE 104 · Sunset Synth</span></div>
-    <div id="speedo"><span id="speed-num">0</span><span id="speed-unit">KM/H</span></div>
-    <div id="vehicle-name">CABRILLO GT</div>
-    <div id="condition-line"><label>CONDITION</label><div class="bar cond"><div id="cond-fill"></div></div><span id="cond-pct">100%</span></div>
+  <div id="dialogue" class="panel hidden">
+    <canvas id="dlg-portrait" width="76" height="76"></canvas>
+    <div class="dlg-body"><div id="dlg-name">MARA VOSS</div><p id="dlg-text"></p></div>
   </div>
 
-  <!-- Mara (usually) has something to say -->
-  <section id="dialogue" class="panel hidden">
-    <img id="dlg-portrait" alt="">
-    <div id="dlg-body"><div id="dlg-name">MARA VOSS <span id="dlg-role">FIXER</span></div><div id="dlg-text"></div></div>
-  </section>
-
-  <!-- centre-screen furniture -->
   <div id="prompt" class="hidden"></div>
-  <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
-  <div id="toast" class="hidden"></div>
-  <div id="crosshair" class="hidden"></div>
-  <div id="damage-vignette"></div>
+  <div id="banner" class="hidden"></div>
+  <div id="toasts"></div>
+  <div id="bust-wrap" class="hidden"><div id="bust-label">BUSTED</div><div class="bar"><div id="bust-fill" class="fill bust"></div></div></div>
 </div>
 
-<!-- ======================= START SCREEN ======================= -->
-<div id="start-screen">
-  <div id="start-inner">
-    <div id="game-logo">VISTA<span> MARINA</span></div>
-    <div id="game-tag">An open-world crime game · the Neon Mile never sleeps</div>
-    <div id="menu-buttons">
-      <button id="btn-continue" class="menu-btn hidden">CONTINUE — <span id="continue-info"></span></button>
-      <button id="btn-new" class="menu-btn primary">NEW GAME</button>
-      <button id="btn-how" class="menu-btn">HOW TO PLAY</button>
+<div id="menu">
+  <div class="menu-inner">
+    <h1>VISTA <span>MARINA</span></h1>
+    <p class="tagline">One wheelman. One fixer. One very watchful police department.</p>
+    <button id="btn-new" class="mbtn">NEW GAME</button>
+    <button id="btn-continue" class="mbtn ghost">CONTINUE</button>
+    <p id="menu-note"></p>
+    <div class="controls">
+      <span><b>WASD</b> move / drive</span><span><b>Mouse</b> look</span><span><b>F</b> enter car</span>
+      <span><b>Click</b> punch / shoot</span><span><b>R</b> reload</span><span><b>1·2</b> weapons</span><span><b>Esc</b> pause</span>
     </div>
-    <div id="howto" class="hidden">
-      <p><b>WASD</b> move / drive · <b>Mouse</b> camera · <b>Shift</b> run · <b>F</b> enter / exit car</p>
-      <p><b>Click</b> punch or shoot · <b>1 / 2</b> fists / pistol · <b>R</b> reload · <b>Space</b> handbrake</p>
-      <p><b>M</b> pause &amp; save · Steal cars, run Mara's jobs, and don't let the VMPD corner you.</p>
-    </div>
-    <div id="start-foot">A city of salt air and bad decisions · the VMPD patrols day and night</div>
   </div>
 </div>
 
-<!-- ========================= PAUSE ========================= -->
-<div id="pause-screen" class="hidden">
-  <div class="pause-box">
-    <h2 id="pause-title">PAUSED</h2>
-    <p id="pause-stats"></p>
-    <button id="btn-resume" class="menu-btn primary">RESUME</button>
-    <button id="btn-save" class="menu-btn">SAVE &amp; KEEP PLAYING</button>
-    <button id="btn-quit" class="menu-btn">QUIT TO TITLE</button>
+<div id="pause" class="hidden">
+  <div class="menu-inner">
+    <h2>PAUSED</h2>
+    <button id="btn-resume" class="mbtn">RESUME</button>
+    <button id="btn-quit" class="mbtn ghost">SAVE &amp; MENU</button>
   </div>
 </div>
+
+<div id="fate" class="hidden"><div id="fate-title">WASTED</div><div id="fate-sub"></div></div>
 
 <script type="module" src="./src/main.js"></script>
 </body>

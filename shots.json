@@ -1,1 +1,1 @@
-[{"name":"1-chase.jpg","query":"?scene=chase"},{"name":"2-foot.jpg","query":"?scene=foot"},{"name":"3-roadblock.jpg","query":"?scene=roadblock"},{"name":"4-night.jpg","query":"?scene=night"}]
+[{"file":"1-chase.jpg","url":"index.html?scene=chase"},{"file":"2-foot.jpg","url":"index.html?scene=foot"},{"file":"3-roadblock.jpg","url":"index.html?scene=roadblock"},{"file":"4-night.jpg","url":"index.html?scene=night"}]

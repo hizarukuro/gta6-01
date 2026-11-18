@@ -1,28 +1,53 @@
-# Vista Marina — a "Make GTA 6" entry for make.fun (gta6-01)
+# Vista Marina — a make.fun gta6-01 entry
 
-[![make.fun bounty](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+[![gta6-01 bounty](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
 [![rank](https://make.fun/badge/gta6-01/hizarukuro/gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
 [![reward](https://make.fun/badge/gta6-01/hizarukuro/gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-An open-world crime game in a neon bay city, built with three.js and plain ES
-modules — no build step, no network. You are **Nico Ferreira**, a wheelman
-working for fixer **Mara Voss** across five districts of Vista Marina: the
-Neon Mile, Portside, Old Marina, Vista Centro and the island of Cayo Verde.
+**Vista Marina** is an original open-world crime game that runs entirely in the
+browser. You are **Nico Ferreira**, a wheelman working the neon bay city of
+Vista Marina for fixer **Mara Voss**, one job at a time, while the **VMPD**
+watches every corner. Nothing here is borrowed from any existing game: the
+city, people, cars, story and art are all original.
 
-**In the game:** a city you can cross on foot or by car · traffic that drives
-the road grid · pedestrians who flee from trouble · stealable cars (Vela
-sedan, Serrano pickup, the Cabrillo GT) · a 0–5 star wanted level with VMPD
-pursuit, ramming, roadblocks and a spotlight helicopter · fists and pistol
-combat · a seven-mission story chain with dialogue · a full HUD with a live
-police-response panel (callsigns, real distances, tactics), a circular
-minimap and a vehicle cluster · a start screen, pause, and save/continue in
-localStorage · a sunset-to-night day cycle over the bay.
+## The city
 
-**Play it:** `node serve.ts`, then open http://localhost:8080 — WASD to move
-and drive, F to enter a car, mouse to look, click to fight or shoot, R to
-reload, M to pause.
+Five districts around a bay: the hotel strip of the **Neon Mile**, the docks of
+**Portside**, the quiet streets of **Old Marina**, downtown **Vista Centro**,
+and **Cayo Verde**, an island reached by a long causeway. Traffic follows the
+road graph, pedestrians walk the sidewalks, and the day runs from golden hour
+into a neon night.
 
-**Hand it in:** `mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts` copies
-`game/` and `screenshots/` to the output and writes `dossier.json`.
+## What you can do
+
+- Walk, run and look around in third person; steal and drive any car
+  (Cabrillo GT, Serrano pickup, Vela sedan, VMPD Interceptor).
+- Work a 7-chapter story chain for Mara: pickups, deliveries, thefts,
+  fights, a convoy ram and one last tide job.
+- Outrun a living wanted system: patrols, pursuit units that ram,
+  roadblocks at three stars, a spotlight helicopter at four.
+- Fight with fists or a pistol, earn cash and reputation, get busted or
+  wasted and pay your way out of the station or the hospital.
+
+## How to play
+
+Open `game/index.html` (or serve the folder with `serve.ts`) in a desktop
+browser. No network is needed; three.js is vendored locally.
+
+- **WASD** — move / drive · **Mouse** — look (click the game to lock)
+- **F** — enter / exit a car · **Click** — punch / shoot
+- **R** — reload · **1 / 2** — fists / pistol · **Esc / P** — pause
+
+Progress (cash, reputation, chapter) is saved in your browser.
+
+## Layout
+
+- `main.ts` — the hand-in program: assembles the dossier for make.fun.
+- `game/` — the game itself: `index.html`, `style.css`, and single-job
+  modules under `game/src/` (state, city, vehicles, traffic, pedestrians,
+  police, player, input, combat, audio, hud, minimap, missions, save,
+  scenes, main). The simulation runs on a fixed 60 Hz step, separate from
+  rendering, with one central state object.
+- `screenshots/` — four captures from the running game.
 
 Built with make.fun — referral code c23ct4sn

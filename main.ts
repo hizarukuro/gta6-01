@@ -1,39 +1,30 @@
-// Vista Marina — hand-in program for make.fun's "Make GTA 6" bounty (gta6-01).
-//
-// The game is not built, bundled or transpiled: it is the plain static tree
-// under game/ (ES modules, three.js vendored beside them, no network), which
-// a desktop browser opens as-is. This program's whole job is the hand-in —
-// copy game/ and screenshots/ into the output directory and write the
-// dossier the judge reads, using the kit's own buildDossier so the numbers
-// here are the numbers the sealed gate will compute.
-//
-//   Play it:   node serve.ts            → http://localhost:8080
-//   Hand in:   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// Vista Marina — make.fun hand-in program for gta6-01.
+// Copies the static game and its screenshots into the output directory and
+// asks the kit's dossier builder to describe the entry.
+import { cpSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildDossier } from "./vendor/makefun-game.ts";
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { buildDossier } from './vendor/makefun-game.ts';
+const here = dirname(fileURLToPath(import.meta.url));
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
 
-const repoDir = fileURLToPath(new URL('.', import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+cpSync(join(here, "game"), join(outDir, "game"), { recursive: true });
+cpSync(join(here, "screenshots"), join(outDir, "screenshots"), { recursive: true });
 
-mkdirSync(outDir, { recursive: true });
-cpSync(join(repoDir, 'game'), join(outDir, 'game'), { recursive: true });
-mkdirSync(join(outDir, 'screenshots'), { recursive: true });
-if (existsSync(join(repoDir, 'screenshots'))) {
-  cpSync(join(repoDir, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
+const caps = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+};
+
+const built = buildDossier(outDir, caps);
+if (typeof built === "string") {
+  writeFileSync(join(outDir, "dossier.json"), built);
+} else if (built instanceof Uint8Array) {
+  writeFileSync(join(outDir, "dossier.json"), built);
+} else if (built !== undefined && built !== null) {
+  writeFileSync(join(outDir, "dossier.json"), JSON.stringify(built));
 }
-
-// The caps are the gate's own, so an oversized entry fails here, at home,
-// instead of failing quietly on the site.
-writeFileSync(
-  join(outDir, 'dossier.json'),
-  buildDossier(outDir, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
-);
