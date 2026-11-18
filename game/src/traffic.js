@@ -1,98 +1,84 @@
-// traffic.js — the civilian flow: cars that pick a neighbouring junction on
-// the road graph, hold the right-hand lane between junctions, ease off when
-// the car ahead is close, and keep Vista Marina feeling inhabited. Parked
-// cars are seeded here too — they are tomorrow's stolen cars.
+// traffic.js — ambient traffic. Cars follow the road graph segment by
+// segment (right-hand lane), slow for the car ahead, and turn at segment
+// ends. A second set of parked cars dresses the kerbs for the player to steal.
+import { G, SEGMENTS, NODES, segPoint, segLength, rand, randRange, pick } from "./state.js";
+import { addCar } from "./vehicles.js";
 
-import { WORLD } from './state.js';
-import { stepCar } from './vehicles.js';
+const TRAFFIC_MODELS = ["vela", "vela", "cabrillo", "serrano"];
 
-const rand = (a, b) => a + Math.random() * (b - a);
-
-function pickNext(graph, node, avoidKey) {
-  const opts = node.adj.filter((k) => k !== avoidKey);
-  const list = opts.length ? opts : node.adj;
-  return list[(Math.random() * list.length) | 0];
+function placeOnSegment(car, segIdx, t, dirSign) {
+  car.seg = segIdx; car.t = t; car.dir = dirSign;
+  const p = segPoint(SEGMENTS[segIdx], t, 2.9 * dirSign);
+  car.x = p.x; car.z = p.z;
+  car.heading = Math.atan2(p.hx * dirSign, p.hz * dirSign);
+  car.speed = 0;
 }
 
-export function seedTraffic(G, graph, spawnFn, count) {
-  const nodes = [...graph.nodes.values()];
-  for (let i = 0; i < count; i++) {
-    const n = nodes[(Math.random() * nodes.length) | 0];
-    if (n.x > 300 && n.x < 480) continue; // keep the causeway clear-ish
-    const model = ['vela', 'vela', 'serrano', 'cabrillo'][(Math.random() * 4) | 0];
-    const car = spawnFn(model, n.x + rand(-2, 2), n.z + rand(-2, 2), rand(0, Math.PI * 2));
-    car.driver = 'traffic';
-    car.route = { from: n.key, target: pickNext(graph, n, null) };
-    car.cruise = rand(0.45, 0.75);
-    G.cars.push(car);
-    G.traffic.push(car);
+function chooseNext(car) {
+  const seg = SEGMENTS[car.seg];
+  const atB = car.dir > 0;
+  const nx = atB ? seg.bx : seg.ax, nz = atB ? seg.bz : seg.az;
+  const node = NODES.get(nx + "," + nz);
+  if (!node) { car.dir *= -1; return; }
+  const options = node.segs.filter((i) => i !== car.seg);
+  if (!options.length) { car.dir *= -1; car.t = atB ? 1 : 0; return; }
+  const next = pick(options);
+  const ns = SEGMENTS[next];
+  if (ns.ax === nx && ns.az === nz) { car.seg = next; car.t = 0; car.dir = 1; }
+  else { car.seg = next; car.t = 1; car.dir = -1; }
+}
+
+export function initTraffic() {
+  for (let i = 0; i < 20; i++) {
+    const segIdx = Math.floor(rand() * 14); // mainland avenues/streets/boulevard
+    const car = addCar(pick(TRAFFIC_MODELS), 0, 0, 0, { driver: "traffic" });
+    car.cruise = randRange(8, 12.5);
+    placeOnSegment(car, segIdx, rand(), rand() < 0.5 ? 1 : -1);
+  }
+  // Parked cars along kerbs — stealable dressing.
+  const parkSpots = [
+    [238, -160], [238, -84], [238, 24], [238, 96], [238, 168],
+    [183, -123], [103, 37], [-57, 117], [-137, -57], [23, -203],
+    [452, 44], [556, -20], [-203, 60], [60, 203],
+  ];
+  for (const [x, z] of parkSpots) {
+    const vertical = Math.abs(x) > 200 || x > 440;
+    const car = addCar(pick(TRAFFIC_MODELS), x + randRange(-1, 1), z + randRange(-1, 1),
+      vertical ? 0 : Math.PI / 2, { parked: true });
+    car.speed = 0;
   }
 }
 
-// A point t of the way from junction A to junction B, shifted into the
-// right-hand lane for that direction of travel.
-function lanePoint(graph, fromKey, toKey, t, out) {
-  const a = graph.nodes.get(fromKey), b = graph.nodes.get(toKey);
-  const dx = b.x - a.x, dz = b.z - a.z;
-  const len = Math.hypot(dx, dz) || 1;
-  const ux = dx / len, uz = dz / len;
-  out.x = a.x + dx * t + uz * WORLD.lane;
-  out.z = a.z + dz * t - ux * WORLD.lane;
-  out.heading = Math.atan2(ux, uz);
-  return out;
-}
-
-const _lane = { x: 0, z: 0, heading: 0 };
-const _input = { throttle: 0, steer: 0, brake: false, reverse: false, handbrake: false };
-
-export function updateTraffic(G, graph, dt, colliders) {
-  for (const car of G.traffic) {
-    if (car.dead || car.driver !== 'traffic' || !car.route || !car.route.target) continue;
-    const fromNode = graph.nodes.get(car.route.from);
-    const targetNode = graph.nodes.get(car.route.target);
-    if (!fromNode || !targetNode) continue;
-    if (Math.hypot(car.pos.x - targetNode.x, car.pos.z - targetNode.z) < 9) {
-      car.route = { from: car.route.target, target: pickNext(graph, targetNode, car.route.from) };
-      continue;
-    }
-    const segLen = Math.hypot(targetNode.x - fromNode.x, targetNode.z - fromNode.z) || 1;
-    const along = ((car.pos.x - fromNode.x) * (targetNode.x - fromNode.x) +
-                   (car.pos.z - fromNode.z) * (targetNode.z - fromNode.z)) / segLen;
-    const t = Math.min(1, Math.max(0, along / segLen));
-    lanePoint(graph, car.route.from, car.route.target, Math.min(1, t + 14 / segLen), _lane);
-    const want = Math.atan2(_lane.x - car.pos.x, _lane.z - car.pos.z);
-    let diff = want - car.heading;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    _input.steer = Math.max(-1, Math.min(1, diff * 1.6));
-    // mind the car ahead: same heading cone, close, in our lane width
-    let throttle = car.cruise;
-    let brake = false;
+const _ahead = { dx: 0, dz: 0 };
+export function updateTraffic(dt) {
+  for (const car of G.cars) {
+    if (car.driver !== "traffic" || car.dead) continue;
+    const seg = SEGMENTS[car.seg];
+    const len = segLength(seg);
+    // Slow for anything close ahead.
+    let target = car.cruise;
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
     for (const other of G.cars) {
-      if (other === car) continue;
-      const ox = other.pos.x - car.pos.x, oz = other.pos.z - car.pos.z;
-      const ahead = ox * fx + oz * fz;
-      const side = Math.abs(ox * fz - oz * fx);
-      if (ahead > 0 && ahead < 11 && side < 2.4) { throttle = 0; brake = ahead < 6; break; }
+      if (other === car || other.dead) continue;
+      _ahead.dx = other.x - car.x; _ahead.dz = other.z - car.z;
+      const d2 = _ahead.dx * _ahead.dx + _ahead.dz * _ahead.dz;
+      if (d2 < 110 && _ahead.dx * fx + _ahead.dz * fz > 3.2) { target = Math.min(target, 2.5); break; }
     }
-    _input.throttle = throttle;
-    _input.brake = brake;
-    stepCar(car, _input, dt, colliders, G.cars);
-  }
-}
-
-// Kerbside cars with the keys of opportunity in them.
-export function seedParked(G, spawnFn) {
-  const spots = [
-    ['vela', 96, -84, 0.2], ['serrano', -84, 96, 1.7], ['vela', 186, 84, -0.4],
-    ['cabrillo', 262, -160, 1.55], ['vela', -176, -96, 0], ['serrano', 6, 186, 3.1],
-    ['vela', 570, -262, 1.55], ['serrano', -262, -6, 1.6], ['vela', 84, -186, 0.1],
-    ['cabrillo', 334, 120, -1.55], ['serrano', -96, -262, 0], ['vela', 176, -276, 1.55],
-  ];
-  for (const [model, x, z, h] of spots) {
-    const car = spawnFn(model, x, z, h);
-    car.driver = null;
-    G.cars.push(car);
+    if (G.player.car === null && Math.hypot(G.player.x - car.x, G.player.z - car.z) < 5) target = 0;
+    car.speed += (target - car.speed) * Math.min(1, dt * 1.6);
+    car.t += (car.speed * dt * car.dir) / len;
+    if (car.t > 1) { car.t = 1; chooseNext(car); }
+    else if (car.t < 0) { car.t = 0; chooseNext(car); }
+    const p = segPoint(SEGMENTS[car.seg], car.t, 2.9 * car.dir);
+    car.x = p.x; car.z = p.z;
+    const want = Math.atan2(p.hx * car.dir, p.hz * car.dir);
+    let dh = want - car.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    car.heading += dh * Math.min(1, dt * 7);
+    car.group.position.set(car.x, 0, car.z);
+    car.group.rotation.y = car.heading;
+    const spin = (car.speed * dt) / 0.35;
+    for (const w of car.wheels) w.rotation.x += spin;
   }
 }

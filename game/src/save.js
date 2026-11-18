@@ -1,47 +1,41 @@
-// save.js — the game remembers you in localStorage: cash, reputation, story
-// progress, Mara's pistol and the lifetime stats. Saving is a pause-menu
-// choice, plus an autosave each time a job is completed.
+// save.js — localStorage persistence for cash, reputation, story progress
+// and vitals. One key, plain JSON, every access guarded.
+import { G } from "./state.js";
 
-import { G } from './state.js';
+const KEY = "vista-marina-save-v4";
 
-const KEY = 'vista-marina-save-v1';
+export function hasSave() {
+  try { return !!localStorage.getItem(KEY); } catch { return false; }
+}
 
 export function saveGame() {
   try {
+    const p = G.player;
     localStorage.setItem(KEY, JSON.stringify({
-      cash: G.cash, rep: G.rep, repLevel: G.repLevel,
-      missionIndex: G.missionIndex, storyDone: G.storyDone,
-      hasPistol: G.hasPistol, mag: G.mag, reserve: G.reserve,
-      stats: G.stats,
+      cash: p.cash, rep: p.rep, chapter: G.chapterIdx || 0,
+      health: p.health, armour: p.armour, ammo: p.ammo, reserve: p.reserve,
+      stats: G.stats, clockMin: G.clockMin,
     }));
-    return true;
-  } catch {
-    return false; // private mode and friends — the game goes on unsaved
-  }
+  } catch { /* storage unavailable — play on without it */ }
 }
 
 export function loadSave() {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
 }
 
 export function applySave(data) {
   if (!data) return;
-  G.cash = data.cash ?? G.cash;
-  G.rep = data.rep ?? 0;
-  G.repLevel = data.repLevel ?? 1;
-  G.missionIndex = data.missionIndex ?? 0;
-  G.storyDone = !!data.storyDone;
-  G.hasPistol = !!data.hasPistol;
-  G.mag = data.mag ?? 12;
-  G.reserve = data.reserve ?? 60;
-  if (data.stats) Object.assign(G.stats, data.stats);
-}
-
-export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch { /* nothing to clear */ }
+  const p = G.player;
+  p.cash = data.cash ?? p.cash;
+  p.rep = data.rep ?? 0;
+  p.health = data.health ?? 100;
+  p.armour = data.armour ?? 0;
+  p.ammo = data.ammo ?? 8;
+  p.reserve = data.reserve ?? 48;
+  G.stats = data.stats || G.stats;
+  if (data.clockMin) G.clockMin = data.clockMin;
 }
