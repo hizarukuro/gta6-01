@@ -1,8 +1,15 @@
-// scenes.js — staged moments for the entry screenshots (?scene=chase|foot|
-// roadblock|night). Each scene places the real actors — player car, VMPD
-// units, the helicopter, pedestrians — and fills the HUD from the same state
-// the game itself uses, so a screenshot is the game, posed. main.js freezes
-// the simulation in scene mode and calls pin() each frame to hold the pose.
+// scenes.js — the four staged moments the entry is judged by
+// (?scene=chase|foot|roadblock|night). A scene is not a mock-up: it places
+// the game's real actors — the player's car, live VMPD units, GULL-1, traffic
+// and pedestrians — and lets the HUD read the same state it reads in play, so
+// every number on screen (speeds, distances, tactics) is the true one for
+// the pose. main.js freezes the simulation in scene mode; pin() holds the
+// pose each frame while lights flash, wheels turn and the rotor spins.
+//
+// The chase staging is built around the camera: MARLIN-11 sits eleven metres
+// off the GT's bumper, close enough to fill the frame as a police car, and
+// GULL-1 hangs low over the boulevard so the airframe itself — not just its
+// spotlight — is in the shot.
 
 import { G } from './state.js';
 import { LOCATIONS } from './city.js';
@@ -43,18 +50,18 @@ export function createScenes(ctx) {
     };
   }
 
-  // Parks every unstaged pedestrian on a far Portside sidewalk so a random
-  // seed spawn can never photobomb a staged camera.
+  // Every unstaged pedestrian waits on a far Portside pavement, so a random
+  // seed spawn can never wander through a staged camera.
   function clearPeds() {
     G.peds.forEach((ped, i) => {
-      ped.pos.set(-269 + (i % 3) * 2.2, 0, -240 + i * 17);
+      ped.pos.set(-269 + (i % 3) * 2.2, 0, -240 + i * 13);
       ped.mesh.position.copy(ped.pos);
       ped.state = 'walk';
     });
+    stagedPeds = [];
   }
 
   function placePeds(list) {
-    stagedPeds = [];
     list.forEach(([x, z], i) => {
       const ped = G.peds[i];
       if (!ped) return;
@@ -73,31 +80,44 @@ export function createScenes(ctx) {
     hud.refreshWeapons();
   }
 
+  function drivingPose(model, x, z, heading, color, speed, hp) {
+    playerCar = spawnCar(model, x, z, heading, color);
+    playerCar.driver = 'player';
+    playerCar.speed = speed;
+    playerCar.hp = hp;
+    G.cars.push(playerCar);
+    G.driveCar = playerCar;
+    G.mode = 'car';
+    G.player.mesh.visible = false;
+    G.player.pos.set(x, 0, z);
+    hud.onEnterCar(playerCar);
+    return playerCar;
+  }
+
   const scenes = {
+    // THE COVER — head-on down the boulevard at golden hour: the red GT at
+    // 148 km/h, MARLIN-11 big on its bumper, the rest of the response behind,
+    // and GULL-1 low overhead with its spotlight on the car.
     chase() {
       baseSetup();
       G.time = 17.35; G.cash = 18450; G.rep = 1620; G.repLevel = 4;
       G.health = 82; G.armour = 64; G.wanted = 4; G.seenByPolice = true;
-      playerCar = spawnCar('cabrillo', 345, 62, Math.PI, 0xd21f3c);
-      playerCar.driver = 'player'; playerCar.speed = 41; playerCar.hp = 61;
-      G.cars.push(playerCar);
-      G.driveCar = playerCar;
-      G.mode = 'car';
-      G.player.mesh.visible = false;
-      G.player.pos.set(345, 0, 62);
-      policeUnit(341.5, 81, Math.PI, 'MARLIN-11', 'RAMMING');
-      policeUnit(350.5, 93, Math.PI, 'SNAPPER-25', 'PURSUIT');
-      policeUnit(337, 112, Math.PI, 'TARPON-18', 'PURSUIT');
-      trafficCar('vela', 352, 112, Math.PI, 0xe8e8e8);
-      trafficCar('serrano', 341, -64, 0, 0x3f7a52);
-      placePeds([[334, 20], [357, 44], [334, 96], [357, -8]]);
+      drivingPose('cabrillo', 345, 64, Math.PI, 0xd21f3c, 41, 61);
+      policeUnit(339.5, 73.5, Math.PI, 'MARLIN-11', 'RAMMING');   // 11 m back, clear of the GT
+      policeUnit(351, 86, Math.PI, 'SNAPPER-25', 'PURSUIT');      // 23 m back
+      policeUnit(336.5, 105, Math.PI, 'TARPON-18', 'PURSUIT');    // 42 m back
+      trafficCar('vela', 352, 122, Math.PI, 0xe8e8e8);
+      trafficCar('serrano', 340.5, -34, 0, 0x3f7a52);
+      trafficCar('vela', 341.5, -78, 0, 0x8fa3b8);
+      placePeds([[334, 8], [357, 30], [334, 52], [357, 84], [334, 108], [357, -14], [334, 44], [357, 58]]);
       missionCard('CH 7', 'The Tide Job', 2, 3, 'Escape with the cash! Lose the cops.', 'Bring the money home to Mara.', LOCATIONS.garage);
       if (G.heli) { G.heli.active = true; G.heli.tactic = 'SPOTLIGHT ON YOU'; }
-      hud.onEnterCar(playerCar);
       activeDialogue = ['MARA VOSS', 'FIXER', 'Lose that helicopter before you come near my garage! Switch cars, change anything!', 'mara'];
       hud.dialogue(...activeDialogue);
     },
 
+    // On foot on the Neon Mile: Nico, a stealable Vela with its prompt up,
+    // HERON-17 rolling in with its lights on, the crowd going about its day.
     foot() {
       baseSetup();
       G.hasPistol = false; G.weapon = 'fists';
@@ -115,57 +135,51 @@ export function createScenes(ctx) {
       trafficCar('serrano', 349, -34, Math.PI, 0xc7a23a);
       trafficCar('vela', 341.5, 92, 0, 0x2e5f8a);
       policeUnit(347, -2, Math.PI, 'HERON-17', 'PURSUIT');
-      placePeds([[356, 38], [337, 44], [356, -16], [337, 8], [356, 64]]);
+      placePeds([[356, 38], [337, 44], [356, -16], [337, 8], [356, 64], [337, 58], [356, 12]]);
       missionCard('CH 2', 'Package Run', 0, 3, 'Go to the Portside warehouse.', 'The package is by the freight doors.', LOCATIONS.warehouse);
       hud.setPrompt('<b>F</b> — Take the VELA');
     },
 
+    // Dusk on the causeway: two units parked across the road ahead, a third
+    // coming up behind to ram, the island skyline beyond the block.
     roadblock() {
       baseSetup();
       G.time = 17.45; G.cash = 6930; G.rep = 880; G.repLevel = 2;
       G.health = 91; G.armour = 25; G.wanted = 3; G.seenByPolice = true;
-      playerCar = spawnCar('serrano', 430, -270, Math.PI / 2, 0xd4692a);
-      playerCar.driver = 'player'; playerCar.speed = 23; playerCar.hp = 78;
-      G.cars.push(playerCar);
-      G.driveCar = playerCar;
-      G.mode = 'car';
-      G.player.mesh.visible = false;
-      G.player.pos.set(430, 0, -270);
-      policeUnit(480, -273.6, 0.15, 'KESTREL-31', 'ROADBLOCK');
-      policeUnit(480, -266.4, -0.15, 'IBIS-43', 'ROADBLOCK');
-      policeUnit(384, -266.8, Math.PI / 2, 'MARLIN-11', 'RAMMING');
-      missionCard('CH 4', 'Causeway Cash', 2, 3, 'Bring the case to Mara\'s garage.', 'Do not stop for the roadblocks.', LOCATIONS.garage);
-      hud.onEnterCar(playerCar);
+      drivingPose('serrano', 430, -270, Math.PI / 2, 0xd4692a, 23, 78);
+      policeUnit(450, -273.8, 0.15, 'KESTREL-31', 'ROADBLOCK');
+      policeUnit(454, -266.2, -0.15, 'IBIS-43', 'ROADBLOCK');
+      policeUnit(396, -267.2, Math.PI / 2, 'MARLIN-11', 'RAMMING');
+      trafficCar('vela', 528, -266.2, Math.PI / 2, 0xd8d4cc);
+      missionCard('CH 4', 'Causeway Cash', 2, 3, "Bring the case to Mara's garage.", 'Do not stop for the roadblocks.', LOCATIONS.garage);
       activeDialogue = ['MARA VOSS', 'FIXER', 'Roadblock on the causeway, Nico — ram through or swim.', 'mara'];
       hud.dialogue(...activeDialogue);
     },
 
+    // Night on the Mile: two units searching with their headlights up the
+    // road, lit hotel windows, the city gone blue.
     night() {
       baseSetup();
       G.time = 22.55; G.cash = 3210; G.rep = 1040; G.repLevel = 3;
       G.health = 100; G.armour = 40; G.wanted = 2; G.seenByPolice = false;
-      playerCar = spawnCar('cabrillo', 347, 14, Math.PI, 0x2a5aa8);
-      playerCar.driver = 'player'; playerCar.speed = 11; playerCar.hp = 88;
-      G.cars.push(playerCar);
-      G.driveCar = playerCar;
-      G.mode = 'car';
-      G.player.mesh.visible = false;
-      G.player.pos.set(347, 0, 14);
+      drivingPose('cabrillo', 347, 14, Math.PI, 0x2a5aa8, 11, 88);
       policeUnit(352, -28, 0, 'TARPON-18', 'SEARCHING');
       policeUnit(339, -58, 0.3, 'HERON-17', 'SEARCHING');
       trafficCar('vela', 341, -88, 0, 0x6a4a7a);
-      placePeds([[334, 30], [356, -14], [334, -52]]);
+      trafficCar('serrano', 352.5, 74, Math.PI, 0x37414f);
+      placePeds([[334, 30], [356, -14], [334, -52], [356, 44], [334, -6]]);
       missionCard('CH 5', 'Neon Debt', 1, 3, 'Put both debtors on the sand.', 'Fists only — keep it friendly.', LOCATIONS.beachHut);
-      hud.onEnterCar(playerCar);
       activeDialogue = ['MARA VOSS', 'FIXER', 'They are at the hut, laughing about my money. Go take the smile off.', 'mara'];
       hud.dialogue(...activeDialogue);
     },
   };
 
   function camBehind(camera, x, z, heading, dist, height, side) {
-    const bx = x - Math.sin(heading) * dist + Math.cos(heading) * side;
-    const bz = z - Math.cos(heading) * dist - Math.sin(heading) * side;
-    camera.position.set(bx, height, bz);
+    camera.position.set(
+      x - Math.sin(heading) * dist + Math.cos(heading) * side,
+      height,
+      z - Math.cos(heading) * dist - Math.sin(heading) * side,
+    );
     camera.lookAt(x + Math.sin(heading) * 9, 1.3, z + Math.cos(heading) * 9);
   }
 
@@ -173,9 +187,12 @@ export function createScenes(ctx) {
     stage(name) {
       if (!scenes[name]) return false;
       active = name;
+      clearPeds();
       scenes[name]();
       return true;
     },
+    // Hold the pose: lights flash, the driven wheels turn, GULL-1 hangs over
+    // the chase with its rotor spinning, dialogue stays up, limbs swing.
     pin(dt, t) {
       if (!active) return;
       for (const u of G.police) if (u.kind === 'car') tickPoliceLights(u.car, t + u.car.id);
@@ -187,25 +204,30 @@ export function createScenes(ctx) {
         const spin = (playerCar.speed * dt) / 0.36;
         for (const w of playerCar.mesh.userData.wheels) w.rotation.x += spin;
       }
-      if (active === 'chase') poseHelicopter(354, 96, 345, 62, dt, 35);
-      if (active === 'foot') {
-        for (const ped of stagedPeds) {
-          ped.walkPhase += dt * 3;
-          const sw = Math.sin(ped.walkPhase) * 0.4;
-          ped.mesh.userData.legL.rotation.x = sw;
-          ped.mesh.userData.legR.rotation.x = -sw;
-        }
+      for (const ped of stagedPeds) {
+        ped.walkPhase += dt * 3;
+        const sw = Math.sin(ped.walkPhase) * 0.4;
+        ped.mesh.userData.legL.rotation.x = sw;
+        ped.mesh.userData.legR.rotation.x = -sw;
       }
+      // GULL-1 low over the beach side of the boulevard, where the sky is
+      // open: the airframe hangs in the sunset, spotlight pooled on the GT.
+      if (active === 'chase') poseHelicopter(352, 84, 345, 64, dt, 20);
     },
     applyCamera(camera) {
       if (active === 'chase') {
-        // head-on: the GT races at the camera, the whole response behind it
-        camera.position.set(350.5, 4.6, 40);
-        camera.lookAt(343, 1.4, 74);
+        // head-on and close: the GT fills the centre at eighteen metres,
+        // MARLIN-11 looms off its rear quarter, sky left open for GULL-1.
+        camera.position.set(350, 3.4, 46);
+        camera.lookAt(343.5, 3.2, 76);
+      } else if (active === 'foot') {
+        camera.position.set(337.5, 2.0, 40);
+        camera.lookAt(343.5, 1.5, 20);
+      } else if (active === 'roadblock') {
+        camBehind(camera, 430, -270, Math.PI / 2, 10.5, 3.0, 5.5);
+      } else if (active === 'night') {
+        camBehind(camera, 347, 14, Math.PI, 11.5, 3.6, -3.0);
       }
-      else if (active === 'foot') { camera.position.set(337.5, 2.0, 40); camera.lookAt(343.5, 1.5, 20); }
-      else if (active === 'roadblock') camBehind(camera, 430, -270, Math.PI / 2, 12.5, 3.6, 4.5);
-      else if (active === 'night') camBehind(camera, 347, 14, Math.PI, 11.5, 3.6, -3.0);
     },
   };
 }

@@ -1,6 +1,7 @@
-// player.js — Nico Ferreira on foot: third-person movement and camera, entering
-// and stealing cars, taking damage, and the busted / wasted flow that puts him
-// back at VMPD Central or Vista General with a lighter wallet.
+// player.js — Nico Ferreira himself: the on-foot body and its third-person
+// camera, climbing into cars (politely or otherwise), taking hits, and the
+// two ways a run ends — BUSTED at VMPD Central or WASTED at Vista General,
+// both of which fine you on the way out.
 
 import * as THREE from 'three';
 import { G, commitCrime, clearWanted, addCash } from './state.js';
@@ -14,9 +15,13 @@ function buildNicoMesh() {
   torso.position.y = 1.05; torso.castShadow = true;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), new THREE.MeshLambertMaterial({ color: 0xc68863 }));
   head.position.y = 1.78; head.castShadow = true;
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.215, 10, 6, 0, Math.PI * 2, 0, 1.4), new THREE.MeshLambertMaterial({ color: 0x1d1410 }));
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.215, 10, 6, 0, Math.PI * 2, 0, 1.4),
+    new THREE.MeshLambertMaterial({ color: 0x1d1410 }),
+  );
   hair.position.y = 1.82;
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.62, 0.16), new THREE.MeshLambertMaterial({ color: 0x22262e }));
+  const legs = new THREE.MeshLambertMaterial({ color: 0x22262e });
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.62, 0.16), legs);
   legL.position.set(-0.12, 0.31, 0);
   const legR = legL.clone(); legR.position.x = 0.12;
   const armL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.55, 0.11), shirt);
@@ -24,8 +29,8 @@ function buildNicoMesh() {
   const armR = armL.clone(); armR.position.x = 0.37;
   const gun = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14, 0.42), new THREE.MeshLambertMaterial({ color: 0x14151a }));
   gun.position.set(0, -0.3, 0.18);
-  armR.add(gun);
   gun.visible = false;
+  armR.add(gun);
   g.add(torso, head, hair, legL, legR, armL, armR);
   g.userData = { legL, legR, armL, armR, gun };
   return g;
@@ -33,7 +38,7 @@ function buildNicoMesh() {
 
 export function createPlayer(scene, hud) {
   const mesh = buildNicoMesh();
-  mesh.position.set(352, 0, 104);
+  mesh.position.set(352, 0, 104); // the boulevard, where the story starts
   scene.add(mesh);
   const player = {
     mesh, pos: mesh.position,
@@ -44,28 +49,28 @@ export function createPlayer(scene, hud) {
       if (this.iframes > 0 || G.mode === 'busted' || G.mode === 'wasted') return;
       const absorbed = Math.min(G.armour, amount * 0.6);
       G.armour -= absorbed;
-      G.health -= (amount - absorbed);
+      G.health -= amount - absorbed;
       hud.damageFlash();
       if (G.health <= 0) this.die(cause);
     },
     die(cause) {
       G.mode = 'wasted';
-      G.stats.busts += cause === 'busted' ? 1 : 0;
       hud.banner('WASTED', cause === 'shot' ? 'The bay claims another.' : 'Vista General patches you up — for a price.');
-      setTimeout(() => respawn(this, hud, LOCATIONS.hospital, true), 2600);
+      setTimeout(() => respawn(this, hud, LOCATIONS.hospital), 2600);
     },
     bust() {
       if (G.mode === 'busted' || G.mode === 'wasted') return;
       G.mode = 'busted';
+      G.stats.busts += 1;
       hud.banner('BUSTED', 'The VMPD take you in. Bail is not cheap.');
-      setTimeout(() => respawn(this, hud, LOCATIONS.policeHQ, true), 2600);
+      setTimeout(() => respawn(this, hud, LOCATIONS.policeHQ), 2600);
     },
   };
   G.player = player;
   return player;
 }
 
-function respawn(player, hud, at, fine) {
+function respawn(player, hud, at) {
   if (G.driveCar) { G.driveCar.driver = null; G.driveCar = null; }
   player.mesh.visible = true;
   player.pos.set(at.x + 6, 0, at.z + 10);
@@ -73,13 +78,12 @@ function respawn(player, hud, at, fine) {
   G.health = 100;
   G.armour = 0;
   G.bustedMeter = 0;
-  if (fine) addCash(-Math.floor(G.cash * 0.12) - 40);
+  addCash(-Math.floor(G.cash * 0.12) - 40); // the fine
   clearWanted();
   G.mode = 'foot';
-  hud.toast(fine ? 'Released. Your wallet feels lighter.' : 'Back on the street.');
+  hud.toast('Released. Your wallet feels lighter.');
 }
 
-// Nearest car the player could get into, or null.
 export function nearestCar(G, maxDist) {
   let best = null, bd = maxDist;
   for (const car of G.cars) {
@@ -91,8 +95,8 @@ export function nearestCar(G, maxDist) {
 }
 
 export function enterCar(G, hud, car) {
-  const wasTraffic = car.driver === 'traffic';
   if (car.driver === 'police') { hud.toast('Locked. The VMPD thought of that.'); return; }
+  const wasTraffic = car.driver === 'traffic';
   car.driver = 'player';
   G.driveCar = car;
   G.player.mesh.visible = false;
@@ -118,15 +122,15 @@ export function exitCar(G, hud) {
   car.driver = null;
   car.speed = 0;
   G.driveCar = null;
-  const side = { x: car.pos.x + Math.cos(car.heading) * 2.2, z: car.pos.z - Math.sin(car.heading) * 2.2 };
-  G.player.pos.set(side.x, 0, side.z);
+  // step out on the car's left side
+  G.player.pos.set(car.pos.x + Math.cos(car.heading) * 2.2, 0, car.pos.z - Math.sin(car.heading) * 2.2);
   G.player.mesh.visible = true;
   G.mode = 'foot';
   hud.onExitCar();
 }
 
-// On-foot update: camera-relative WASD, limb swing, building collision, and
-// getting run over is as bad as it sounds.
+// On-foot step: camera-relative WASD, a walk cycle in the limbs, building
+// collision, and a healthy respect for moving traffic.
 export function updatePlayerOnFoot(G, dt, input, colliders, camDelta) {
   const p = G.player;
   p.iframes = Math.max(0, p.iframes - dt);
@@ -172,25 +176,26 @@ export function updatePlayerOnFoot(G, dt, input, colliders, camDelta) {
   }
 }
 
-// Third-person camera: behind and above, smoothed. In a car it pulls back
-// with speed. Returns nothing; writes into camera.
+const _camPos = new THREE.Vector3();
+// Third-person camera: over the shoulder on foot; in a car it sits behind
+// and stretches back as the speed climbs. Smoothed, never snapped.
 export function updateCamera(G, camera, dt) {
   const p = G.player;
-  let target, dist, height;
+  const blend = 1 - Math.pow(0.0001, dt);
   if (G.mode === 'car' && G.driveCar) {
     const car = G.driveCar;
-    target = car.pos;
-    dist = 9.5 + Math.abs(car.speed) * 0.09;
-    height = 3.6;
-    const back = { x: target.x - Math.sin(car.heading) * dist, z: target.z - Math.cos(car.heading) * dist };
-    camera.position.lerp(new THREE.Vector3(back.x, height, back.z), 1 - Math.pow(0.0001, dt));
-    camera.lookAt(target.x, 1.4, target.z);
+    const dist = 9.5 + Math.abs(car.speed) * 0.09;
+    _camPos.set(car.pos.x - Math.sin(car.heading) * dist, 3.6, car.pos.z - Math.cos(car.heading) * dist);
+    camera.position.lerp(_camPos, blend);
+    camera.lookAt(car.pos.x, 1.4, car.pos.z);
   } else {
-    target = p.pos;
-    const cx = target.x - Math.sin(p.camYaw) * -7.5 * Math.cos(p.camPitch);
-    const cz = target.z - Math.cos(p.camYaw) * -7.5 * Math.cos(p.camPitch);
-    const cy = 1.6 + Math.sin(p.camPitch) * 7.5;
-    camera.position.lerp(new THREE.Vector3(cx, cy, cz), 1 - Math.pow(0.0001, dt));
-    camera.lookAt(target.x, 1.5, target.z);
+    const dist = 7.5;
+    _camPos.set(
+      p.pos.x + Math.sin(p.camYaw) * dist * Math.cos(p.camPitch),
+      1.6 + Math.sin(p.camPitch) * dist,
+      p.pos.z + Math.cos(p.camYaw) * dist * Math.cos(p.camPitch),
+    );
+    camera.position.lerp(_camPos, blend);
+    camera.lookAt(p.pos.x, 1.5, p.pos.z);
   }
 }

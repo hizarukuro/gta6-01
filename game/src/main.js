@@ -1,6 +1,9 @@
-// main.js — boots Vista Marina and runs it: renderer, city, traffic,
-// pedestrians, police, the player, combat, missions, HUD and minimap, all
-// stepped on a fixed 60 Hz simulation with rendering on the display clock.
+// main.js — boots Vista Marina and keeps it running. It builds the renderer,
+// the city and every system, then steps the world on a fixed 60 Hz simulation
+// while rendering happens on the display's own clock, so the game plays the
+// same on a 60 Hz laptop and a 144 Hz monitor. In ?scene= mode the simulation
+// is frozen and the staged pose is held instead — that is how the entry's
+// screenshots are taken.
 
 import * as THREE from 'three';
 import { G } from './state.js';
@@ -15,10 +18,11 @@ import { createMissions } from './missions.js';
 import { createHud } from './hud.js';
 import { createMinimap } from './minimap.js';
 import { createScenes } from './scenes.js';
-import { initInput, keys, justPressed, endFrameInput, takeMouse, takeClick, driveInput } from './input.js';
+import { initInput, justPressed, endFrameInput, takeMouse, takeClick, driveInput } from './input.js';
 import { saveGame, loadSave, applySave } from './save.js';
 import { sfx } from './audio.js';
 
+// ------------------------------------------------------------------- setup
 const canvas = document.getElementById('gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -39,18 +43,17 @@ const hud = createHud();
 const player = createPlayer(scene, hud);
 buildHelicopter(scene);
 initCombat(scene);
-seedTraffic(G, graph, spawnCarBound, 14);
+seedTraffic(G, graph, spawnCarBound, 20); // a lived-in flow of traffic
 seedParked(G, spawnCarBound);
-seedPeds(G, scene, 22);
+seedPeds(G, scene, 36);                   // and a crowd to share the pavements
 const minimap = createMinimap(graph);
 const missions = createMissions({ hud, city, graph, spawnCar: spawnCarBound, save: () => saveGame() });
 const scenes = createScenes({ hud, spawnCar: spawnCarBound });
 initInput(canvas);
 
 // ------------------------------------------------------------- start / pause
-window.__vm = G; // debugging hook: the whole state, live
-const params = new URLSearchParams(location.search);
-const sceneName = params.get('scene');
+window.__vm = G; // a debugging hook: the whole live state
+const sceneName = new URLSearchParams(location.search).get('scene');
 let shotFrames = 0;
 window.__shotReady = false;
 
@@ -84,7 +87,8 @@ function setPaused(on) {
     G.prevMode = G.mode;
     G.mode = 'pause';
     document.getElementById('pause-stats').textContent =
-      `Cash $${G.cash.toLocaleString('en-US')} · Jobs done ${G.stats.missionsDone}/7 · Cars stolen ${G.stats.steals}\nWanted level ${G.wanted} · Rep level ${G.repLevel}`;
+      `Cash $${G.cash.toLocaleString('en-US')} · Jobs done ${G.stats.missionsDone}/7 · Cars stolen ${G.stats.steals}\n` +
+      `Wanted level ${G.wanted} · Rep level ${G.repLevel}`;
     pauseScreen.classList.remove('hidden');
   } else {
     G.mode = G.prevMode === 'pause' ? 'foot' : G.prevMode;
@@ -101,7 +105,7 @@ if (sceneName && scenes.stage(sceneName)) {
   G.mode = sceneName === 'foot' ? 'foot' : 'car';
 }
 
-// ------------------------------------------------------------- simulation
+// --------------------------------------------------------------- simulation
 const _carInput = { throttle: 0, steer: 0, brake: false, reverse: false, handbrake: false };
 
 function step(dt) {
@@ -115,8 +119,7 @@ function step(dt) {
   }
   if (G.mode === 'pause' || G.mode === 'menu') { endFrameInput(); return; }
 
-  // clock: a full day lasts about half an hour of play
-  G.time = (G.time + dt / 75) % 24;
+  G.time = (G.time + dt / 75) % 24; // an in-game hour every 75 real seconds
 
   if (G.mode === 'car' && G.driveCar) {
     const car = G.driveCar;
@@ -128,7 +131,7 @@ function step(dt) {
     stepCar(car, _carInput, dt, city.colliders, G.cars);
     G.player.pos.set(car.pos.x, 0, car.pos.z);
     G.stats.topSpeed = Math.max(G.stats.topSpeed, Math.abs(car.speed) * 3.6);
-    if (car.hitSpeed > 13) { // a hard crash hurts
+    if (car.hitSpeed > 13) { // a hard crash hurts the driver too
       player.hurt((car.hitSpeed - 10) * 0.7, 'crash');
       car.hitSpeed = 0;
     }
@@ -149,7 +152,7 @@ function step(dt) {
   updatePolice(G, graph, dt, city.colliders, spawnCarBound, player);
   missions.update(dt);
 
-  // busted: cornered on foot, or boxed in while stationary
+  // the bust pressure: cornered on foot, or boxed in and stopped in a car
   if (G.wanted > 0 && (G.mode === 'foot' || G.mode === 'car')) {
     let pressure = 0;
     for (const u of G.police) {
@@ -158,25 +161,29 @@ function step(dt) {
       if (G.mode === 'foot' && d < 3.4) pressure += 1;
       if (G.mode === 'car' && d < 8.5) pressure += 0.5;
     }
-    const boxed = G.mode === 'car' && Math.abs(G.driveCar?.speed ?? 9) < 1 && pressure >= 1;
+    const boxed = G.mode === 'car' && Math.abs(G.driveCar ? G.driveCar.speed : 9) < 1 && pressure >= 1;
     if ((G.mode === 'foot' && pressure >= 1) || boxed) G.bustedMeter += dt;
     else G.bustedMeter = Math.max(0, G.bustedMeter - dt * 0.6);
-    if (G.bustedMeter > 2.2) { G.bustedMeter = 0; sfx.busted(); player.bust(); }
+    if (G.bustedMeter > 2.2) {
+      G.bustedMeter = 0;
+      sfx.busted();
+      player.bust();
+    }
   }
   endFrameInput();
 }
 
-// ------------------------------------------------------------- frame loop
+// -------------------------------------------------------------------- loop
 let last = performance.now();
 let accumulator = 0;
 const STEP = 1 / 60;
 
 function frame(now) {
   requestAnimationFrame(frame);
-  let dt = Math.min(0.1, (now - last) / 1000);
+  const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (G.scene) {
-    // staged screenshot: hold the pose, keep the world alive around it
+    // staged screenshot: hold the pose, keep the sky and HUD alive around it
     scenes.pin(dt, now / 1000);
     city.update(dt, G.time);
     scenes.applyCamera(camera);
@@ -193,9 +200,10 @@ function frame(now) {
     accumulator -= STEP;
   }
   city.update(dt, G.time);
-  // keep the shadow frustum on the player
+  // the shadow frustum follows the player so shadows stay crisp nearby
   const f = G.player.pos;
-  city.sun.position.x += f.x; city.sun.position.z += f.z;
+  city.sun.position.x += f.x;
+  city.sun.position.z += f.z;
   city.sun.target.position.set(f.x, 0, f.z);
   if (G.started && G.mode !== 'menu') {
     updateCamera(G, camera, dt);
@@ -203,7 +211,7 @@ function frame(now) {
     minimap.draw(G);
     sfx.update(G, dt);
   } else {
-    // menu backdrop: slow orbit over the boulevard
+    // menu backdrop: a slow orbit above the boulevard
     const t = now / 1000;
     camera.position.set(345 + Math.sin(t * 0.05) * 60, 26 + Math.sin(t * 0.11) * 6, 120 + Math.cos(t * 0.05) * 60);
     camera.lookAt(345, 4, 0);
