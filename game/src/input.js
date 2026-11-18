@@ -1,67 +1,51 @@
-// input.js — raw keyboard and mouse state. Keys are tracked by physical code
-// so the layout holds on any keyboard; one-shot actions read the "just
-// pressed" edge set, which the frame loop clears after every step.
-
-export const keys = new Set();
+// input.js — keyboard state, edge presses, pointer-lock mouse look and the
+// attack click. Everything else reads from here; nothing else touches the DOM.
+export const keys = {};
 const pressed = new Set();
 let mouseDX = 0, mouseDY = 0;
-let clickQueued = false;
+let attackHeld = false, attackEdge = false;
+let canvas = null, canLock = null;
 
-export function initInput(canvas) {
-  addEventListener('keydown', (e) => {
-    if (!keys.has(e.code)) pressed.add(e.code);
-    keys.add(e.code);
-    if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+export function initInput(c, opts = {}) {
+  canvas = c;
+  canLock = opts.canLock || (() => true);
+  window.addEventListener("keydown", (e) => {
+    if (!keys[e.code]) pressed.add(e.code);
+    keys[e.code] = true;
+    if (["ArrowUp", "ArrowDown", "Space"].includes(e.code)) e.preventDefault();
   });
-  addEventListener('keyup', (e) => keys.delete(e.code));
-  addEventListener('mousedown', (e) => {
-    if (e.button === 0) clickQueued = true;
-    if (document.pointerLockElement !== canvas && canvas.requestPointerLock) {
-      canvas.requestPointerLock();
+  window.addEventListener("keyup", (e) => { keys[e.code] = false; });
+  window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+  canvas.addEventListener("click", () => {
+    if (canLock() && document.pointerLockElement !== canvas) {
+      canvas.requestPointerLock?.();
     }
   });
-  addEventListener('mousemove', (e) => {
-    if (document.pointerLockElement) {
+  document.addEventListener("mousemove", (e) => {
+    if (document.pointerLockElement === canvas) {
       mouseDX += e.movementX || 0;
       mouseDY += e.movementY || 0;
     }
   });
+  document.addEventListener("mousedown", (e) => {
+    if (e.button === 0 && document.pointerLockElement === canvas) {
+      if (!attackHeld) attackEdge = true;
+      attackHeld = true;
+    }
+  });
+  document.addEventListener("mouseup", (e) => { if (e.button === 0) attackHeld = false; });
 }
 
-export function justPressed(code) {
-  return pressed.has(code);
+export function wasPressed(code) { return pressed.has(code); }
+export function endFrame() { pressed.clear(); }
+export function consumeMouse() {
+  const out = { dx: mouseDX, dy: mouseDY };
+  mouseDX = 0; mouseDY = 0;
+  return out;
 }
-
-export function takeMouse() {
-  return { dx: mouseDX, dy: mouseDY };
+export function consumeAttack() {
+  const a = attackEdge;
+  attackEdge = false;
+  return a;
 }
-
-export function takeClick() {
-  const c = clickQueued;
-  clickQueued = false;
-  return c;
-}
-
-export function endFrameInput() {
-  pressed.clear();
-  mouseDX = 0;
-  mouseDY = 0;
-  clickQueued = false;
-}
-
-// The axes the rest of the game reads: driving doubles as walking.
-export function driveInput() {
-  const fwd = keys.has('KeyW') || keys.has('ArrowUp');
-  const back = keys.has('KeyS') || keys.has('ArrowDown');
-  const left = keys.has('KeyA') || keys.has('ArrowLeft');
-  const right = keys.has('KeyD') || keys.has('ArrowRight');
-  return {
-    throttle: fwd ? 1 : back ? -0.7 : 0,
-    steer: (left ? 1 : 0) - (right ? 1 : 0),
-    brake: keys.has('Space') && !back,
-    reverse: back,
-    handbrake: keys.has('Space'),
-    fwd, back, left, right,
-    run: keys.has('ShiftLeft') || keys.has('ShiftRight'),
-  };
-}
+export function isAttackHeld() { return attackHeld; }

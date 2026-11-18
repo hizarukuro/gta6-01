@@ -1,98 +1,83 @@
-// audio.js — a pocket WebAudio synth standing in for a sound department: an
-// engine hum that follows your speed, a two-tone siren that swells as the
-// nearest unit closes in, and one-shot blips for gunfire, punches, reloads
-// and cash. It wakes lazily on the first user gesture and every entry point
-// is wrapped so a missing audio device can never break the game.
-
+// audio.js — a tiny WebAudio synth: engine hum, a two-tone siren that
+// follows the nearest unit, and one-shot blips for shots, punches, cash and
+// UI. Everything is guarded — audio must never throw or block the game.
 let ctx = null, master = null;
-let engineOsc = null, engineGain = null, sirenOsc = null, sirenGain = null;
-let sirenFlip = 0;
+let engineOsc = null, engineOsc2 = null, engineGain = null;
+let sirenOsc = null, sirenGain = null;
+let sirenLevel = 0;
 
-function ensure() {
-  if (ctx) return true;
+export function initAudio() {
   try {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx) { ctx.resume?.(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.5;
+    master.gain.value = 0.42;
     master.connect(ctx.destination);
-    engineOsc = ctx.createOscillator();
-    engineOsc.type = 'sawtooth';
     engineGain = ctx.createGain(); engineGain.gain.value = 0;
-    const engineFilter = ctx.createBiquadFilter();
-    engineFilter.type = 'lowpass'; engineFilter.frequency.value = 420;
-    engineOsc.connect(engineFilter);
-    engineFilter.connect(engineGain);
-    engineGain.connect(master);
-    engineOsc.start();
-    sirenOsc = ctx.createOscillator();
-    sirenOsc.type = 'triangle';
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 420;
+    engineOsc = ctx.createOscillator(); engineOsc.type = "sawtooth"; engineOsc.frequency.value = 55;
+    engineOsc2 = ctx.createOscillator(); engineOsc2.type = "square"; engineOsc2.frequency.value = 28;
+    engineOsc.connect(lp); engineOsc2.connect(lp); lp.connect(engineGain); engineGain.connect(master);
+    engineOsc.start(); engineOsc2.start();
     sirenGain = ctx.createGain(); sirenGain.gain.value = 0;
-    sirenOsc.connect(sirenGain);
-    sirenGain.connect(master);
+    sirenOsc = ctx.createOscillator(); sirenOsc.type = "triangle"; sirenOsc.frequency.value = 760;
+    sirenOsc.connect(sirenGain); sirenGain.connect(master);
     sirenOsc.start();
-    return true;
-  } catch {
-    return false;
+  } catch { ctx = null; }
+}
+
+export function setEngine(on, norm) {
+  if (!ctx || !engineGain) return;
+  try {
+    const t = ctx.currentTime;
+    engineGain.gain.setTargetAtTime(on ? 0.05 + norm * 0.075 : 0, t, 0.09);
+    engineOsc.frequency.setTargetAtTime(52 + norm * 165, t, 0.08);
+    engineOsc2.frequency.setTargetAtTime(26 + norm * 82, t, 0.08);
+  } catch { /* silent */ }
+}
+
+export function setSiren(level) { sirenLevel = level; }
+
+export function updateAudio() {
+  if (!ctx || !sirenGain) return;
+  try {
+    const t = ctx.currentTime;
+    sirenGain.gain.setTargetAtTime(sirenLevel * 0.055, t, 0.15);
+    sirenOsc.frequency.setTargetAtTime(745 + Math.sin(t * 4.6) * 165, t, 0.03);
+  } catch { /* silent */ }
+}
+
+function blip(f0, f1, dur, type, gain, delay = 0) {
+  if (!ctx) return;
+  try {
+    const t0 = ctx.currentTime + delay;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), t0 + dur);
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    o.connect(g); g.connect(master);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  } catch { /* silent */ }
+}
+
+export function sfx(name) {
+  if (!ctx) return;
+  switch (name) {
+    case "shot": blip(160, 40, 0.13, "square", 0.5); blip(900, 120, 0.06, "sawtooth", 0.22); break;
+    case "swing": blip(300, 140, 0.06, "sine", 0.12); break;
+    case "punch": blip(130, 45, 0.09, "sine", 0.5); break;
+    case "clank": blip(620, 300, 0.07, "square", 0.18); break;
+    case "click": blip(1200, 900, 0.03, "square", 0.15); break;
+    case "reload": blip(500, 300, 0.05, "square", 0.2); blip(700, 420, 0.05, "square", 0.2, 0.09); break;
+    case "cash": blip(880, 880, 0.07, "sine", 0.25); blip(1318, 1318, 0.1, "sine", 0.25, 0.07); break;
+    case "blip": blip(660, 660, 0.05, "square", 0.12); break;
+    case "door": blip(95, 60, 0.1, "sine", 0.4); break;
+    case "crash": blip(220, 30, 0.22, "sawtooth", 0.4); break;
+    case "mission": blip(523, 523, 0.09, "triangle", 0.25); blip(659, 659, 0.09, "triangle", 0.25, 0.09); blip(784, 784, 0.14, "triangle", 0.25, 0.18); break;
+    case "busted": blip(392, 392, 0.12, "triangle", 0.25); blip(311, 311, 0.2, "triangle", 0.25, 0.13); break;
   }
 }
-
-function blip(freq, dur, type, gain, slideTo) {
-  if (!ensure()) return;
-  const o = ctx.createOscillator(), g = ctx.createGain();
-  o.type = type;
-  o.frequency.value = freq;
-  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, ctx.currentTime + dur);
-  g.gain.setValueAtTime(gain, ctx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-  o.connect(g);
-  g.connect(master);
-  o.start();
-  o.stop(ctx.currentTime + dur);
-}
-
-function noiseBurst(dur, gain) {
-  if (!ensure()) return;
-  const len = Math.floor(ctx.sampleRate * dur);
-  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  const g = ctx.createGain();
-  g.gain.value = gain;
-  src.connect(g);
-  g.connect(master);
-  src.start();
-}
-
-export const sfx = {
-  unlock() { ensure(); },
-  shot() { noiseBurst(0.12, 0.5); blip(160, 0.08, 'square', 0.2, 60); },
-  punch() { noiseBurst(0.05, 0.25); },
-  reload() { blip(500, 0.05, 'square', 0.15); setTimeout(() => blip(700, 0.05, 'square', 0.15), 120); },
-  cash() { blip(880, 0.09, 'sine', 0.25); setTimeout(() => blip(1320, 0.14, 'sine', 0.25), 80); },
-  blip() { blip(660, 0.07, 'sine', 0.18); },
-  busted() { blip(220, 0.4, 'sawtooth', 0.25, 110); },
-  // Continuous beds, steered once a frame from main.js.
-  update(G, dt) {
-    if (!ctx) return;
-    const driving = G.mode === 'car' && G.driveCar;
-    const engineTarget = driving ? 0.05 + Math.abs(G.driveCar.speed) * 0.0016 : 0;
-    engineGain.gain.value += (engineTarget - engineGain.gain.value) * 0.2;
-    if (driving) engineOsc.frequency.value = 55 + Math.abs(G.driveCar.speed) * 2.6;
-    let sirenTarget = 0;
-    if (G.wanted > 0 && G.player) {
-      for (const u of G.police) {
-        if (u.kind !== 'car') continue;
-        const d = Math.hypot(u.car.pos.x - G.player.pos.x, u.car.pos.z - G.player.pos.z);
-        sirenTarget = Math.max(sirenTarget, Math.max(0, 1 - d / 130) * 0.12);
-      }
-    }
-    sirenGain.gain.value += (sirenTarget - sirenGain.gain.value) * 0.1;
-    sirenFlip += dt;
-    if (sirenFlip > 0.42) {
-      sirenFlip = 0;
-      sirenOsc.frequency.value = sirenOsc.frequency.value > 800 ? 660 : 950;
-    }
-  },
-};

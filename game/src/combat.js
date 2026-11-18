@@ -1,135 +1,119 @@
-// combat.js — Nico's hands and Mara's pistol. Shooting is hitscan along his
-// facing with a tracer and a muzzle flash; punching is short, rude and close.
-// Both make noise, and noise is a crime the VMPD can hear: every shot and
-// scuffle feeds the wanted heat.
+// combat.js — fists and the pistol. Melee is a short arc in front of Nico;
+// the pistol is a hitscan along the camera's aim with tracers, a muzzle
+// flash, ammo and reload. Shots and violence feed the wanted system.
+import * as THREE from "three";
+import { G, clamp, dist2D } from "./state.js";
+import { consumeAttack, wasPressed } from "./input.js";
+import { hurtPed } from "./pedestrians.js";
+import { damageCar } from "./vehicles.js";
+import { raiseHeat } from "./police.js";
+import { sfx } from "./audio.js";
 
-import * as THREE from 'three';
-import { G, commitCrime } from './state.js';
-import { damageCar } from './vehicles.js';
-import { hurtPed, scarePeds } from './pedestrians.js';
-import { sfx } from './audio.js';
+let scene = null, camera = null;
+let cool = 0, flash = null;
+const tracers = [];
+const _dir = new THREE.Vector3(), _origin = new THREE.Vector3(), _to = new THREE.Vector3();
 
-let tracer = null, flash = null, flashLife = 0;
-
-export function initCombat(scene) {
-  tracer = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-    new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0 }),
-  );
-  scene.add(tracer);
-  flash = new THREE.Mesh(
-    new THREE.SphereGeometry(0.16, 6, 6),
-    new THREE.MeshBasicMaterial({ color: 0xffd94d, transparent: true, opacity: 0 }),
-  );
+export function initCombat(s, cam) {
+  scene = s; camera = cam;
+  flash = new THREE.PointLight(0xffc46b, 0, 13);
   scene.add(flash);
 }
 
-export function setWeapon(G, hud, weapon) {
-  if (weapon === 'pistol' && !G.hasPistol) { hud.toast('No pistol yet. Mara provides.'); return; }
-  G.weapon = weapon;
-  const u = G.player.mesh.userData;
-  u.gun.visible = weapon === 'pistol';
-  u.armR.rotation.x = weapon === 'pistol' ? -1.3 : 0;
-  hud.refreshWeapons();
+function tracer(x1, y1, z1, x2, y2, z2, color) {
+  const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }));
+  scene.add(line);
+  tracers.push({ line, life: 0.06 });
 }
 
-export function startReload(G, hud) {
-  if (G.weapon !== 'pistol' || G.reloading > 0 || G.mag >= 12 || G.reserve <= 0) return;
-  G.reloading = 1.1;
-  sfx.reload();
-  hud.toast('Reloading…');
-}
-
-const _from = new THREE.Vector3(), _to = new THREE.Vector3();
-
-function shoot(G, hud) {
+function startReload() {
   const p = G.player;
-  G.mag -= 1;
-  sfx.shot();
-  scarePeds(G, p.pos.x, p.pos.z, 30);
-  commitCrime(0.45, 'shots fired');
-  const dirX = Math.sin(p.heading), dirZ = Math.cos(p.heading);
-  _from.set(p.pos.x + dirX * 0.5, 1.35, p.pos.z + dirZ * 0.5);
-  // nearest target along the shot line wins, pedestrian or car
-  let bestT = 46, hitPed = null, hitCar = null;
-  const test = (x, z, radius, obj, isPed) => {
-    const rx = x - p.pos.x, rz = z - p.pos.z;
-    const t = rx * dirX + rz * dirZ;
-    if (t < 1 || t > bestT) return;
-    const px = p.pos.x + dirX * t, pz = p.pos.z + dirZ * t;
-    if (Math.hypot(px - x, pz - z) < radius) {
-      bestT = t;
-      if (isPed) { hitPed = obj; hitCar = null; } else { hitCar = obj; hitPed = null; }
-    }
-  };
-  for (const ped of G.peds) if (ped.state !== 'down') test(ped.pos.x, ped.pos.z, 0.55, ped, true);
-  for (const car of G.cars) if (!car.dead) test(car.pos.x, car.pos.z, 2.1, car, false);
-  _to.set(p.pos.x + dirX * bestT, 1.3, p.pos.z + dirZ * bestT);
-  tracer.geometry.setFromPoints([_from, _to]);
-  tracer.material.opacity = 0.95;
-  flash.position.copy(_from);
-  flash.material.opacity = 0.95;
-  flashLife = 0.07;
-  if (hitPed) {
-    hurtPed(hitPed, 34);
-    if (hitPed.state === 'down') commitCrime(0.5, 'assault');
-  }
-  if (hitCar) {
-    damageCar(hitCar, 9, null);
-    if (hitCar.driver === 'police') commitCrime(0.6, 'shot at police');
-  }
-  if (G.mag === 0) hud.toast('Magazine empty — R to reload.');
-  hud.refreshWeapons();
+  if (p.reloadT > 0 || p.ammo >= 8 || p.reserve <= 0) return;
+  p.reloadT = 1.1;
+  sfx("reload");
 }
 
-function punch(G, hud) {
+export function updateCombat(dt) {
   const p = G.player;
-  sfx.punch();
-  const u = p.mesh.userData;
-  u.armR.rotation.x = -1.9;
-  setTimeout(() => { if (G.weapon !== 'pistol') u.armR.rotation.x = 0; }, 130);
-  const fx = p.pos.x + Math.sin(p.heading) * 1.4;
-  const fz = p.pos.z + Math.cos(p.heading) * 1.4;
-  for (const ped of G.peds) {
-    if (ped.state !== 'down' && Math.hypot(ped.pos.x - fx, ped.pos.z - fz) < 1.3) {
-      hurtPed(ped, 13);
-      commitCrime(0.3, 'assault');
-      scarePeds(G, p.pos.x, p.pos.z, 10);
-      return;
+  cool = Math.max(0, cool - dt);
+  if (flash) flash.intensity = Math.max(0, flash.intensity - dt * 60);
+  for (let i = tracers.length - 1; i >= 0; i--) {
+    tracers[i].life -= dt;
+    if (tracers[i].life <= 0) {
+      scene.remove(tracers[i].line);
+      tracers[i].line.geometry.dispose();
+      tracers.splice(i, 1);
     }
   }
-  for (const car of G.cars) {
-    if (!car.dead && Math.hypot(car.pos.x - fx, car.pos.z - fz) < 2.6) {
-      damageCar(car, 4, null);
-      commitCrime(0.18, 'vandalism');
-      return;
-    }
-  }
-}
+  if (G.mode !== "play" || p.dead) return;
 
-// Per-frame while on foot: reload bookkeeping, tracer fade, and the click.
-export function updateCombat(G, dt, hud, clicked) {
-  if (flashLife > 0) {
-    flashLife -= dt;
-    if (flashLife <= 0) { tracer.material.opacity = 0; flash.material.opacity = 0; }
-  }
-  if (G.reloading > 0) {
-    G.reloading -= dt;
-    if (G.reloading <= 0) {
-      const take = Math.min(12 - G.mag, G.reserve);
-      G.mag += take;
-      G.reserve -= take;
-      hud.refreshWeapons();
+  if (wasPressed("Digit1")) { p.weapon = "fists"; sfx("blip"); }
+  if (wasPressed("Digit2")) { p.weapon = "pistol"; sfx("blip"); }
+  if (wasPressed("KeyR")) startReload();
+  if (p.reloadT > 0) {
+    p.reloadT -= dt;
+    if (p.reloadT <= 0) {
+      const take = Math.min(8 - p.ammo, p.reserve);
+      p.ammo += take; p.reserve -= take;
     }
     return;
   }
-  if (!clicked || G.player.attackCd > 0 || G.mode !== 'foot') return;
-  if (G.weapon === 'pistol') {
-    if (G.mag <= 0) { startReload(G, hud); return; }
-    G.player.attackCd = 0.24;
-    shoot(G, hud);
-  } else {
-    G.player.attackCd = 0.38;
-    punch(G, hud);
+  if (!consumeAttack() || cool > 0 || p.car) return;
+
+  const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
+  if (p.weapon === "fists") {
+    cool = 0.38;
+    sfx("swing");
+    let hit = false;
+    for (const ped of G.peds) {
+      if (ped.state === "down") continue;
+      const d = dist2D(ped.x, ped.z, p.x, p.z);
+      if (d < 2.0) {
+        const dot = ((ped.x - p.x) * fx + (ped.z - p.z) * fz) / (d || 1);
+        if (dot > 0.25) { hurtPed(ped, 13); hit = true; }
+      }
+    }
+    for (const car of G.cars) {
+      if (dist2D(car.x, car.z, p.x, p.z) < car.spec.len * 0.5 + 1.2) { damageCar(car, 1.5); hit = true; }
+    }
+    if (hit) { sfx("punch"); raiseHeat(0.3); }
+    return;
   }
+
+  // pistol
+  if (p.ammo <= 0) { sfx("click"); startReload(); cool = 0.3; return; }
+  cool = 0.24;
+  p.ammo -= 1;
+  sfx("shot");
+  raiseHeat(0.34);
+  camera.getWorldDirection(_dir);
+  _origin.set(p.x, 1.45, p.z);
+  const muzzle = { x: p.x + _dir.x * 0.5, z: p.z + _dir.z * 0.5 };
+  let bestT = 65, hitPoint = null, hitPed = null, hitCar = null;
+  for (const ped of G.peds) {
+    if (ped.state === "down") continue;
+    _to.set(ped.x - _origin.x, 1.15 - _origin.y, ped.z - _origin.z);
+    const t = _to.dot(_dir);
+    if (t < 0 || t > bestT) continue;
+    const perp = Math.sqrt(Math.max(0, _to.lengthSq() - t * t));
+    if (perp < 0.85) { bestT = t; hitPed = ped; hitCar = null; }
+  }
+  for (const car of G.cars) {
+    if (car.dead || car === p.car) continue;
+    _to.set(car.x - _origin.x, 0.8 - _origin.y, car.z - _origin.z);
+    const t = _to.dot(_dir);
+    if (t < 0 || t > bestT) continue;
+    const perp = Math.sqrt(Math.max(0, _to.lengthSq() - t * t));
+    if (perp < car.spec.len * 0.42) { bestT = t; hitCar = car; hitPed = null; }
+  }
+  hitPoint = {
+    x: _origin.x + _dir.x * bestT, y: _origin.y + _dir.y * bestT, z: _origin.z + _dir.z * bestT,
+  };
+  tracer(muzzle.x, 1.42, muzzle.z, hitPoint.x, hitPoint.y, hitPoint.z, 0xffe2a8);
+  flash.position.set(hitPoint.x, hitPoint.y + 0.4, hitPoint.z);
+  flash.intensity = 2.6;
+  if (hitPed) { hurtPed(hitPed, 34); if (hitPed.state === "down") raiseHeat(0.5); }
+  if (hitCar) { damageCar(hitCar, 6); sfx("clank"); }
+  if (p.ammo === 0) startReload();
 }

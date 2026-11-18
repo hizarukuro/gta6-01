@@ -1,222 +1,167 @@
-// hud.js — all of the DOM chrome the player reads at a glance: the mission
-// card with its stage bar, the VMPD response panel (callsigns, live distances,
-// current tactics), stars, cash and clock, weapon slots, vitals, the vehicle
-// cluster with its speedometer, dialogue with a drawn portrait, prompts,
-// toasts and banners. Everything is refreshed from G once a frame; distances
-// in the panel are measured from the real unit positions every time.
+// hud.js — every piece of DOM the player reads: mission card, VMPD response
+// panel (live measured distances), stars, cash, clock, vitals, speedo,
+// weapon slots, dialogue with painted portraits, prompts, banners, toasts.
+import { G, fmtMoney, repLevel, repTitle, RADIO_STATIONS } from "./state.js";
+import { unitReport } from "./police.js";
 
-import { G, repName, RADIO_STATIONS } from './state.js';
-import { heliPos } from './police.js';
-import { sfx } from './audio.js';
+const el = {};
+let dlgT = 0, bannerT = 0, hudT = 0;
+const toasts = [];
+let lastPrompt = undefined;
+const portraits = {};
 
-const $ = (id) => document.getElementById(id);
-
-// Stylised flat portraits, painted once per character onto a small canvas.
-function drawPortrait(kind) {
-  const c = document.createElement('canvas');
-  c.width = 96; c.height = 96;
-  const g = c.getContext('2d');
-  if (kind === 'mara') {
-    g.fillStyle = '#40204a'; g.fillRect(0, 0, 96, 96);
-    g.fillStyle = '#ff3d77'; g.fillRect(0, 76, 96, 20);
-    g.fillStyle = '#8a5a3b'; g.beginPath(); g.arc(48, 47, 20, 0, 7); g.fill();
-    g.fillStyle = '#ff3d77'; g.fillRect(27, 12, 42, 15); g.fillRect(24, 12, 8, 42); g.fillRect(64, 12, 8, 42);
-    g.fillStyle = '#0e0e14'; g.fillRect(28, 42, 40, 11);
-    g.fillStyle = '#9be7ff'; g.fillRect(31, 44, 13, 3);
-    g.fillStyle = '#e84a6f'; g.fillRect(41, 63, 14, 4);
-    g.fillStyle = '#ffd94d'; g.fillRect(38, 79, 20, 3);
-  } else {
-    g.fillStyle = '#173d4d'; g.fillRect(0, 0, 96, 96);
-    g.fillStyle = '#ff7847'; g.fillRect(0, 76, 96, 20);
-    g.fillStyle = '#c68863'; g.beginPath(); g.arc(48, 47, 20, 0, 7); g.fill();
-    g.fillStyle = '#1d1410'; g.beginPath(); g.arc(48, 34, 20, Math.PI, 0); g.fill(); g.fillRect(28, 26, 40, 8);
-    g.fillStyle = '#14100e'; g.fillRect(36, 45, 5, 3); g.fillRect(55, 45, 5, 3);
-    g.fillStyle = '#ffffff'; g.fillRect(40, 61, 16, 4);
-    g.fillStyle = 'rgba(20,14,10,0.35)'; g.fillRect(36, 56, 24, 12);
-  }
-  return c.toDataURL();
+function portraitCanvas(draw) {
+  const c = document.createElement("canvas");
+  c.width = 76; c.height = 76;
+  draw(c.getContext("2d"));
+  return c;
+}
+function makePortraits() {
+  portraits.MARA = portraitCanvas((x) => {
+    x.fillStyle = "#2b1b3d"; x.fillRect(0, 0, 76, 76);
+    x.fillStyle = "#0f766e"; x.fillRect(14, 48, 48, 28);            // shoulders
+    x.fillStyle = "#c68863"; x.fillRect(31, 30, 14, 12);             // neck
+    x.fillStyle = "#e8b98d"; x.beginPath(); x.arc(38, 26, 13, 0, 7); x.fill(); // face
+    x.fillStyle = "#191410"; x.fillRect(23, 4, 30, 16);              // hair top
+    x.fillRect(21, 12, 7, 30); x.fillRect(48, 12, 7, 30);           // hair sides
+    x.fillStyle = "#14100c";
+    x.fillRect(31, 25, 3, 3); x.fillRect(43, 25, 3, 3);             // eyes
+    x.fillStyle = "#a03d4e"; x.fillRect(34, 34, 8, 2.6);            // lips
+    x.fillStyle = "#ffd23c"; x.fillRect(35, 52, 6, 8);              // pendant
+  });
+  portraits.NICO = portraitCanvas((x) => {
+    x.fillStyle = "#233044"; x.fillRect(0, 0, 76, 76);
+    x.fillStyle = "#0f766e"; x.fillRect(14, 48, 48, 28);
+    x.fillStyle = "#c68863"; x.beginPath(); x.arc(38, 27, 13, 0, 7); x.fill();
+    x.fillStyle = "#14161c"; x.fillRect(24, 8, 28, 8);              // cap
+    x.fillRect(20, 15, 36, 4);                                       // brim
+    x.fillStyle = "#14100c";
+    x.fillRect(31, 26, 3, 3); x.fillRect(43, 26, 3, 3);
+    x.fillRect(33, 36, 10, 2);                                       // mouth
+    x.fillStyle = "#6e4423"; x.fillRect(30, 31, 16, 4);             // stubble shade
+  });
 }
 
-export function createHud() {
-  const portraits = { mara: drawPortrait('mara'), nico: drawPortrait('nico') };
-  let bannerTimer = 0, toastTimer = 0, dialogueTimer = 0, blinkClock = 0;
+export function initHud() {
+  for (const id of ["hud", "mc-chapter", "mc-title", "mc-objective", "mc-bar-fill", "mc-next",
+    "stars", "clock", "cash", "pp-status", "pp-rows", "hp-fill", "ar-fill", "rep-label",
+    "speedo", "speed-val", "veh-name", "veh-cond-fill", "radio",
+    "weap-fists", "weap-pistol", "ammo-label", "dialogue", "dlg-portrait", "dlg-name", "dlg-text",
+    "prompt", "banner", "toasts", "bust-wrap", "bust-fill", "fate", "fate-title", "fate-sub"]) {
+    el[id] = document.getElementById(id);
+  }
+  makePortraits();
+  el.stars.innerHTML = Array.from({ length: 5 }, () => "<span>★</span>").join("");
+}
 
-  function nearestUnitLabel() {
-    if (G.heli && G.heli.active) return 'GULL-1';
-    let best = null, bd = Infinity;
-    for (const u of G.police) {
-      if (u.kind !== 'car') continue;
-      const d = Math.hypot(u.car.pos.x - G.player.pos.x, u.car.pos.z - G.player.pos.z);
-      if (d < bd) { bd = d; best = u.callsign; }
-    }
-    return best;
+export function showDialogue(speaker, text, dur = 4.6) {
+  el["dlg-name"].textContent = speaker === "MARA" ? "MARA VOSS" : "NICO FERREIRA";
+  el["dlg-text"].textContent = text;
+  const ctx = el["dlg-portrait"].getContext("2d");
+  ctx.clearRect(0, 0, 76, 76);
+  ctx.drawImage(portraits[speaker] || portraits.MARA, 0, 0);
+  el.dialogue.classList.remove("hidden");
+  dlgT = dur;
+}
+export function hideDialogue() { el.dialogue.classList.add("hidden"); dlgT = 0; }
+
+export function showBanner(text, dur = 2.4) {
+  el.banner.textContent = text;
+  el.banner.classList.remove("hidden");
+  bannerT = dur;
+}
+
+export function toast(text) {
+  const d = document.createElement("div");
+  d.className = "toast"; d.textContent = text;
+  el.toasts.appendChild(d);
+  toasts.push({ node: d, t: 3.2 });
+}
+
+export function setPrompt(text) {
+  if (text === lastPrompt) return;
+  lastPrompt = text;
+  if (text) { el.prompt.textContent = text; el.prompt.classList.remove("hidden"); }
+  else el.prompt.classList.add("hidden");
+}
+
+export function showFate(kind, sub) {
+  el["fate-title"].textContent = kind === "busted" ? "BUSTED" : "WASTED";
+  el["fate-title"].style.color = kind === "busted" ? "#3ca9ff" : "#ff5e7a";
+  el["fate-sub"].textContent = sub;
+  el.fate.classList.remove("hidden");
+}
+export function hideFate() { el.fate.classList.add("hidden"); }
+
+const DAYS = ["FRI", "SAT", "SUN", "MON", "TUE", "WED", "THU"];
+function clockText() {
+  const total = Math.floor(G.clockMin);
+  const day = DAYS[Math.floor(total / 1440) % 7];
+  const hh = String(Math.floor((total % 1440) / 60)).padStart(2, "0");
+  const mm = String(total % 60).padStart(2, "0");
+  return day + " " + hh + ":" + mm;
+}
+
+export function updateHud(dt) {
+  dlgT -= dt; if (dlgT <= 0 && !el.dialogue.classList.contains("hidden")) hideDialogue();
+  bannerT -= dt; if (bannerT <= 0) el.banner.classList.add("hidden");
+  for (let i = toasts.length - 1; i >= 0; i--) {
+    toasts[i].t -= dt;
+    if (toasts[i].t <= 0) { toasts[i].node.remove(); toasts.splice(i, 1); }
+  }
+  hudT -= dt;
+  if (hudT > 0) return;
+  hudT = 0.12;
+  const p = G.player;
+
+  const starSpans = el.stars.children;
+  for (let i = 0; i < starSpans.length; i++) {
+    starSpans[i].className = i < G.wanted ? "on" : "";
+    starSpans[i].style.opacity = i < G.wanted && G.seen && Math.sin(G.simTime * 9) > 0 ? "0.45" : "1";
+  }
+  el.clock.textContent = clockText();
+  el.cash.textContent = fmtMoney(p.cash);
+
+  const m = G.mission;
+  if (m) {
+    el["mc-chapter"].textContent = "CH " + m.chapter;
+    el["mc-title"].textContent = m.title;
+    el["mc-objective"].textContent = m.objective;
+    el["mc-bar-fill"].style.width = Math.round((m.stage / Math.max(1, m.stages)) * 100) + "%";
+    el["mc-next"].textContent = m.next ? "NEXT · " + m.next : "";
   }
 
-  // The response panel's rows: every ground unit plus the helicopter when it
-  // is up, sorted nearest first, each with its true distance from the player.
-  function panelUnits() {
-    const px = G.player.pos.x, pz = G.player.pos.z;
-    const list = [];
-    for (const u of G.police) {
-      if (u.kind !== 'car') continue;
-      list.push({
-        callsign: u.callsign,
-        tactic: u.car.dead ? 'DISABLED' : u.tactic,
-        heli: false,
-        dist: Math.hypot(u.car.pos.x - px, u.car.pos.z - pz),
-      });
-    }
-    if (G.heli && G.heli.active) {
-      const hp = heliPos();
-      list.push({
-        callsign: 'GULL-1',
-        tactic: G.heli.tactic,
-        heli: true,
-        dist: hp ? Math.hypot(hp.x - px, hp.z - pz) : 0,
-      });
-    }
-    list.sort((a, b) => a.dist - b.dist);
-    return list.slice(0, 5);
+  const report = unitReport();
+  const status = el["pp-status"];
+  if (G.wanted === 0) { status.textContent = "CLEAR"; status.className = ""; }
+  else if (G.seen) { status.textContent = "ENGAGED"; status.className = "hot"; }
+  else { status.textContent = "SEARCHING"; status.className = "hot"; }
+  if (!report.length) {
+    el["pp-rows"].innerHTML = '<div class="pp-none">No units dispatched.</div>';
+  } else {
+    el["pp-rows"].innerHTML = report.slice(0, 6).map((u) =>
+      '<div class="pp-row"><span class="cs">' + u.callsign + '</span><span class="tac">' +
+      u.tactic + '</span><span class="dist">' + Math.round(u.dist) + " m</span></div>").join("");
   }
 
-  function formatTimer(s) {
-    const m = Math.floor(s / 60), ss = Math.floor(s % 60);
-    return `${m}:${String(ss).padStart(2, '0')}`;
-  }
+  el["hp-fill"].style.width = Math.max(0, p.health) + "%";
+  el["ar-fill"].style.width = Math.max(0, p.armour) + "%";
+  el["rep-label"].textContent = "REP " + repLevel() + " · " + repTitle();
 
-  const hud = {
-    portraits,
-    show() { $('hud').classList.remove('hidden'); },
-    hide() { $('hud').classList.add('hidden'); },
+  if (p.car) {
+    el.speedo.classList.remove("hidden");
+    el["speed-val"].textContent = Math.round(Math.abs(p.car.speed) * 3.6);
+    el["veh-name"].textContent = p.car.spec.label;
+    el["veh-cond-fill"].style.width = Math.max(0, p.car.condition) + "%";
+    el.radio.textContent = RADIO_STATIONS[G.radioIdx];
+  } else el.speedo.classList.add("hidden");
 
-    banner(title, sub) {
-      $('banner-title').textContent = title;
-      $('banner-sub').textContent = sub || '';
-      $('banner').classList.remove('hidden');
-      bannerTimer = 3.2;
-      sfx.blip();
-    },
-    toast(text) {
-      $('toast').textContent = text;
-      $('toast').classList.remove('hidden');
-      toastTimer = 3.4;
-    },
-    damageFlash() {
-      const v = $('damage-vignette');
-      v.style.boxShadow = 'inset 0 0 120px rgba(200,10,30,0.55)';
-      setTimeout(() => { v.style.boxShadow = 'inset 0 0 120px rgba(200,10,30,0)'; }, 130);
-    },
-    setPrompt(html) {
-      if (html) {
-        $('prompt').innerHTML = html;
-        $('prompt').classList.remove('hidden');
-      } else {
-        $('prompt').classList.add('hidden');
-      }
-    },
-    dialogue(speaker, role, text, who) {
-      $('dlg-portrait').src = portraits[who || 'mara'];
-      $('dlg-name').innerHTML = `${speaker} <span id="dlg-role">${role}</span>`;
-      $('dlg-text').textContent = text;
-      $('dialogue').classList.remove('hidden');
-      dialogueTimer = 5.2;
-    },
-    hideDialogue() { $('dialogue').classList.add('hidden'); dialogueTimer = 0; },
-    onEnterCar(car) {
-      $('vehicle-cluster').classList.remove('hidden');
-      $('vehicle-name').textContent = car.spec.name;
-      $('radio-name').textContent = RADIO_STATIONS[car.id % RADIO_STATIONS.length];
-      $('crosshair').classList.add('hidden');
-    },
-    onExitCar() {
-      $('vehicle-cluster').classList.add('hidden');
-    },
-    refreshWeapons() {
-      $('slot-fists').classList.toggle('active', G.weapon === 'fists');
-      $('slot-pistol').classList.toggle('active', G.weapon === 'pistol');
-      $('slot-pistol').classList.toggle('locked', !G.hasPistol);
-      $('pistol-ammo').textContent = `${G.mag}/${G.reserve}`;
-      $('crosshair').classList.toggle('hidden', !(G.mode === 'foot' && G.weapon === 'pistol'));
-    },
+  el["weap-fists"].className = "weap" + (p.weapon === "fists" ? " active" : "");
+  el["weap-pistol"].className = "weap" + (p.weapon === "pistol" ? " active" : "");
+  el["ammo-label"].textContent = p.reloadT > 0 ? "···" : p.ammo + " / " + p.reserve;
 
-    // One refresh of every readout, from G, every rendered frame.
-    update(dt) {
-      bannerTimer -= dt; toastTimer -= dt; dialogueTimer -= dt; blinkClock += dt;
-      if (bannerTimer <= 0) $('banner').classList.add('hidden');
-      if (toastTimer <= 0) $('toast').classList.add('hidden');
-      if (dialogueTimer <= 0) $('dialogue').classList.add('hidden');
-
-      // clock, cash, stars, sight state
-      const hh = Math.floor(G.time), mm = Math.floor((G.time - hh) * 60);
-      $('clock-day').textContent = G.dayName;
-      $('clock-time').textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-      $('cash').textContent = '$' + G.cash.toLocaleString('en-US');
-      let stars = '';
-      for (let i = 0; i < 5; i++) stars += i < G.wanted ? '★' : '<span class="off">★</span>';
-      $('wanted').innerHTML = stars;
-      $('wanted').classList.toggle('blink', !G.seenByPolice && G.wanted > 0 && Math.floor(blinkClock * 2) % 2 === 0);
-      if (G.wanted === 0) {
-        $('sight-line').style.visibility = 'hidden';
-      } else {
-        $('sight-line').style.visibility = 'visible';
-        const sight = $('sight-badge');
-        sight.textContent = G.seenByPolice ? 'IN SIGHT' : 'SEARCHING';
-        sight.classList.toggle('searching', !G.seenByPolice);
-        const near = nearestUnitLabel();
-        $('sight-unit').textContent = near ? '· ' + near : '';
-      }
-
-      // vitals and reputation
-      $('hp-fill').style.width = Math.max(0, G.health) + '%';
-      $('ar-fill').style.width = Math.max(0, G.armour) + '%';
-      $('rep-badge').textContent = 'REP ' + G.repLevel;
-      $('rep-name').textContent = repName(G.repLevel);
-      $('rep-xp').textContent = `${G.rep} / ${G.repLevel * 500}`;
-
-      // mission card
-      const m = G.mission;
-      if (m) {
-        $('mission-card').style.display = '';
-        $('mc-chapter').textContent = m.def.chapter;
-        $('mc-title').textContent = m.def.title.toUpperCase();
-        $('mc-objective').textContent = m.stage.label;
-        $('mc-stage-label').textContent = `STAGE ${m.stageIndex + 1}/${m.def.stages.length}`;
-        $('mc-stage-fill').style.width = (m.stageIndex / m.def.stages.length * 100) + '%';
-        $('mc-next-text').textContent = m.stage.next || '';
-        $('mc-timer').textContent = m.timeLeft != null ? formatTimer(m.timeLeft) : '';
-      } else {
-        $('mission-card').style.display = 'none';
-      }
-
-      // police response panel
-      const units = panelUnits();
-      const pp = $('police-panel');
-      if (G.wanted === 0 || units.length === 0) {
-        pp.style.display = 'none';
-      } else {
-        pp.style.display = '';
-        $('pp-code').textContent = 'CODE ' + (G.wanted + 1);
-        $('pp-units').innerHTML = units.map((u) =>
-          `<li><span class="u-dot${u.heli ? ' heli' : ''}"></span>${u.callsign}` +
-          `<span class="u-dist">${Math.round(u.dist)} m</span>` +
-          `<span class="u-tactic${u.tactic === 'RAMMING' || u.tactic.includes('SPOTLIGHT') ? ' hot' : ''}">${u.tactic}</span></li>`).join('');
-        const roadblock = units.some((u) => u.tactic === 'ROADBLOCK');
-        $('pp-note').textContent = roadblock
-          ? '+ roadblock reported ahead — find another way'
-          : (G.seenByPolice ? 'Units converge on your position' : 'You broke line of sight — stay hidden');
-      }
-
-      // vehicle cluster
-      if (G.mode === 'car' && G.driveCar) {
-        const car = G.driveCar;
-        $('speed-num').textContent = Math.round(Math.abs(car.speed) * 3.6);
-        $('cond-fill').style.width = Math.max(0, car.hp) + '%';
-        $('cond-fill').style.background = car.hp > 50 ? '#ffd94d' : car.hp > 25 ? '#ff9040' : '#ff4040';
-        $('cond-pct').textContent = Math.round(Math.max(0, car.hp)) + '%';
-      }
-    },
-  };
-
-  hud.refreshWeapons();
-  return hud;
+  if (p.bust > 0.02) {
+    el["bust-wrap"].classList.remove("hidden");
+    el["bust-fill"].style.width = Math.round(p.bust * 100) + "%";
+  } else el["bust-wrap"].classList.add("hidden");
 }

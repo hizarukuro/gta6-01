@@ -1,286 +1,233 @@
-// missions.js — Mara Voss's seven jobs, CH1 First Wheels to CH7 The Tide Job.
-// A job is a short list of stages — go somewhere, steal something, deliver it,
-// pick something up, lose the heat, put someone on the sand, ram a convoy —
-// walked by one small state machine. The HUD card reads G.mission; finishing
-// a job pays out, autosaves, and Mara calls again a few seconds later.
+// missions.js — Mara Voss's seven-chapter story chain. A small stage
+// machine (goto / steal / deliver / pickup / lose / fight / ram) drives
+// objectives, dialogue, payouts and reputation. All text is original.
+import { G, PLACES, dist2D } from "./state.js";
+import { addCar } from "./vehicles.js";
+import { addPed } from "./pedestrians.js";
+import { setWanted, raiseHeat } from "./police.js";
+import { showDialogue, showBanner, toast } from "./hud.js";
+import { sfx } from "./audio.js";
+import { saveGame } from "./save.js";
 
-import { G, addCash, addRep, commitCrime } from './state.js';
-import { LOCATIONS, nearestNode } from './city.js';
-import { setCarColor } from './vehicles.js';
-import { sfx } from './audio.js';
+const G_SPOT = PLACES.garage;
 
-const L = LOCATIONS;
-
-// Stage fields: type; label (the objective line); next (the NEXT line);
-// x/z/r (a place and its arrival radius); plus type-specific extras the
-// setup step fills in (the car to steal, the convoy to stop, and so on).
-export const MISSIONS = [
+const CHAPTERS = [
   {
-    chapter: 'CH 1', title: 'First Wheels', pay: 400, rep: 60,
-    intro: ['MARA VOSS', 'FIXER', 'Nico. Wheels first, talk later. There is a grey Vela idling by the boulevard — take it, bring it to my garage.', 'mara'],
+    title: "First Wheels", payout: 450, rep: 120,
+    intro: ["MARA", "Nico. It's Mara. Come to my garage in Old Marina — quiet streets, easy money, no stories."],
     stages: [
-      { type: 'goto', x: L.garage.x, z: L.garage.z, r: 12, label: 'Meet Mara at her garage in Old Marina.', next: 'She is expecting you.' },
-      { type: 'steal', model: 'vela', x: 334, z: -40, label: 'Steal the grey Vela on the Neon Mile.', next: 'Then bring it home to Mara.' },
-      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, label: "Deliver the Vela to Mara's garage.", next: 'Cash on delivery.' },
+      { type: "goto", x: G_SPOT.x, z: G_SPOT.z, r: 8, text: "Meet Mara at her garage in Old Marina." },
+      { type: "steal", text: "Take the blue Vela parked on the Mile.",
+        spawnCar: { model: "vela", x: 200, z: 37, heading: Math.PI / 2, color: 0x3a6fd8 },
+        say: ["MARA", "There's a blue Vela sleeping by the Mile with your name on it. Wake it up — gently."] },
+      { type: "deliver", x: G_SPOT.x, z: G_SPOT.z, r: 9, text: "Deliver the Vela to Mara's garage.",
+        say: ["NICO", "One Vela, slightly borrowed. Coming in."] },
     ],
-    outro: 'Clean work. The bay is full of cars, and now one of them is ours.',
   },
   {
-    chapter: 'CH 2', title: 'Package Run', pay: 650, rep: 80,
-    intro: ['MARA VOSS', 'FIXER', 'A package waits at the Portside warehouse. Pick it up on foot, drop it at Club Vela. And Nico — I left you a pistol in the crate. Take it.', 'mara'],
+    title: "Harbour Run", payout: 700, rep: 140,
+    intro: ["MARA", "Portside, south docks. A man with a grey case is waiting. Don't keep him."],
     stages: [
-      { type: 'goto', x: L.warehouse.x, z: L.warehouse.z, r: 13, label: 'Go to the Portside warehouse.', next: 'The package is by the freight doors.' },
-      { type: 'pickup', x: L.warehouse.x + 14, z: L.warehouse.z + 8, r: 3.4, label: 'Pick up the package (and the pistol).', next: 'Someone may have called it in.' },
-      { type: 'deliver', x: L.club.x, z: L.club.z, r: 12, anyVehicle: true, label: 'Drop the package at Club Vela.', next: 'Keep it intact.' },
+      { type: "pickup", x: -160, z: 150, r: 8, text: "Pick up the package at the Portside docks." },
+      { type: "deliver", x: 215, z: -120, r: 8, text: "Drop the case at Hotel Lumen's service door.",
+        heat: 1.2, say: ["MARA", "If the VMPD sniffs around the drop, lose them first."] },
+      { type: "lose", text: "Lose the VMPD.", want: 2 },
     ],
-    outro: 'The club sends its thanks. You shoot straighter than you park.',
   },
   {
-    chapter: 'CH 3', title: 'Heat Check', pay: 800, rep: 100,
-    intro: ['MARA VOSS', 'FIXER', 'Before I trust you with real money: steal the Serrano at the port, let the VMPD see you, then lose them. All the way — no stars, no pay.', 'mara'],
+    title: "Paper Trail", payout: 850, rep: 150,
+    intro: ["MARA", "A courier downtown has papers that belong to me. Go and be polite about it."],
     stages: [
-      { type: 'steal', model: 'serrano', x: -140, z: 96, label: 'Steal the Serrano pickup in Portside.', next: 'Then make some noise.' },
-      { type: 'lose', stars: 2, label: 'Lose the VMPD completely.', next: 'Break line of sight and stay hidden.' },
+      { type: "goto", x: 60, z: 60, r: 7, text: "Meet the courier in Vista Centro." },
+      { type: "steal", text: "Take the Serrano with the documents.",
+        spawnCar: { model: "serrano", x: 66, z: 118, heading: 0, color: 0x5d6670 },
+        say: ["MARA", "Grey Serrano, plates ending 44. The documents are in the back. All of them."] },
+      { type: "deliver", x: -30, z: -160, r: 8, text: "Deliver the Serrano to the Old Marina drop." },
     ],
-    outro: 'Two stars and you walked away clean. All right, wheelman — real jobs now.',
   },
   {
-    chapter: 'CH 4', title: 'Causeway Cash', pay: 1200, rep: 140,
-    intro: ['MARA VOSS', 'FIXER', 'A case of cash sleeps at my Cayo Verde safehouse. Fetch it, bring it home. The causeway will be watched — it always is.', 'mara'],
+    title: "Causeway Blues", payout: 1100, rep: 170,
+    intro: ["MARA", "A passenger in Centro needs the island, fast and unrecorded. You're the ferry."],
     stages: [
-      { type: 'goto', x: L.cayoHouse.x, z: L.cayoHouse.z, r: 13, label: 'Cross the causeway to Cayo Verde.', next: 'The safehouse is on the island.' },
-      { type: 'pickup', x: L.cayoHouse.x + 8, z: L.cayoHouse.z + 10, r: 3.4, label: 'Take the cash case.', next: 'Expect company on the way back.', alarm: 3 },
-      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, anyVehicle: true, label: "Bring the case to Mara's garage.", next: 'Do not stop for the roadblocks.' },
+      { type: "pickup", x: -100, z: -20, r: 8, text: "Pick up the passenger in Vista Centro." },
+      { type: "deliver", x: 520, z: 30, r: 9, text: "Take the causeway to Cayo Verde.", heat: 1.5,
+        say: ["MARA", "The VMPD loves that causeway. Smile for the cameras."] },
+      { type: "goto", x: G_SPOT.x, z: G_SPOT.z, r: 8, text: "Return to Mara's garage." },
     ],
-    outro: 'Counted and clean. The island money spends the same as any other.',
   },
   {
-    chapter: 'CH 5', title: 'Neon Debt', pay: 1000, rep: 120,
-    intro: ['MARA VOSS', 'FIXER', 'Two lifeguards at the beach hut owe me and laugh about it. Go explain compound interest. Fists are fine — I need them working, not floating.', 'mara'],
+    title: "Night Market", payout: 1300, rep: 180,
+    intro: ["MARA", "Braga's boys are taxing my night market. I want my stalls back."],
     stages: [
-      { type: 'goto', x: L.beachHut.x, z: L.beachHut.z, r: 14, label: 'Find the debtors at the lifeguard hut.', next: 'They sunbathe. You educate.' },
-      { type: 'fight', count: 2, x: L.beachHut.x, z: L.beachHut.z, label: 'Put both debtors on the sand.', next: 'Fists only — keep it friendly.' },
-      { type: 'goto', x: L.club.x, z: L.club.z, r: 12, label: 'Report back at Club Vela.', next: "Mara's cut is waiting." },
+      { type: "goto", x: 180, z: -60, r: 8, text: "Head to the night market on the Mile." },
+      { type: "fight", x: 186, z: -66, text: "Deal with the crew muscling the market.",
+        thugs: [[186, -66], [178, -58], [192, -54]],
+        say: ["MARA", "Three of them. Retire them, Nico — permanently would be tidiest."] },
+      { type: "pickup", x: 170, z: -40, r: 7, foot: true, text: "Collect the stall money." },
+      { type: "deliver", x: -140, z: 130, r: 8, text: "Bring the money to Portside." },
     ],
-    outro: 'They paid in full, plus a tip for the lesson. The bay respects you now.',
   },
   {
-    chapter: 'CH 6', title: 'Convoy Job', pay: 1600, rep: 170,
-    intro: ['MARA VOSS', 'FIXER', 'An armoured Serrano is moving money through Vista Centro. Ram it until it stops — three good hits — then take the case from the back.', 'mara'],
+    title: "Hot Metal", payout: 1600, rep: 200,
+    intro: ["MARA", "A Cabrillo GT is sitting at the Sol's valet stand, and its owner owes me a car."],
     stages: [
-      { type: 'ram', model: 'serrano', x: 6, z: -96, label: 'Stop the armoured Serrano: ram it 3 times.', next: 'It drives the grid in Vista Centro.' },
-      { type: 'pickupAt', r: 4, label: 'Take the case from the stopped truck.', next: 'Then lose any heat.' },
-      { type: 'deliver', x: L.club.x, z: L.club.z, r: 12, anyVehicle: true, label: 'Deliver the case to Club Vela.', next: 'Last job before the big one.' },
+      { type: "steal", text: "Take the Cabrillo GT from the valet stand.",
+        spawnCar: { model: "cabrillo", x: 232, z: 150, heading: Math.PI, color: 0xd8232a },
+        say: ["MARA", "Red GT, keys in it, driver at the bar. The department will notice. That's the fun part."] },
+      { type: "lose", text: "Lose the VMPD — the whole department.", want: 4 },
+      { type: "deliver", x: G_SPOT.x, z: G_SPOT.z, r: 9, text: "Deliver the GT to Mara's garage." },
     ],
-    outro: 'Armour plating, meet Nico. One job left, and it is the one that matters.',
   },
   {
-    chapter: 'CH 7', title: 'The Tide Job', pay: 2500, rep: 260,
-    intro: ['MARA VOSS', 'FIXER', 'Tonight we take the red Cabrillo GT out of its own showroom. Every badge in the city will come. Bring it to my garage and we are rich and gone.', 'mara'],
+    title: "The Tide Job", payout: 2500, rep: 260,
+    intro: ["MARA", "Last one, Nico. The tide job. Crew, convoy, case, island. Then we're ghosts."],
     stages: [
-      { type: 'goto', x: L.showroom.x, z: L.showroom.z, r: 13, label: 'Go to the Cabrillo showroom.', next: 'The GT is on the floor, keys in.' },
-      { type: 'steal', model: 'cabrillo', x: L.showroom.x + 4, z: L.showroom.z + 20, alarm: 4, label: 'Steal the Cabrillo GT. Escape with the cash!', next: 'Lose the cops, then bring it home.' },
-      { type: 'deliver', x: L.garage.x, z: L.garage.z, r: 11, label: "Bring the GT home to Mara.", next: 'Do not come near the garage with the helicopter up.' },
+      { type: "pickup", x: -180, z: 170, r: 8, text: "Pick up the crew at Portside." },
+      { type: "ram", x: -20, z: -108, text: "Ram the armoured Serrano until it gives up the case.",
+        spawnCar: { model: "serrano", x: -20, z: -108, heading: Math.PI / 2, color: 0x24382b },
+        say: ["MARA", "That Serrano is a vault on wheels. Hit it until it stops being one."] },
+      { type: "pickup", x: -20, z: -108, r: 6, foot: true, followCar: true, text: "Grab the case from the Serrano." },
+      { type: "deliver", x: 500, z: 10, r: 9, text: "Run the case to Cayo Verde. Do not stop.", want: 4,
+        say: ["MARA", "Tide's turning, Nico. Bring it home."] },
     ],
-    outro: 'That is the tide turning, Nico. Vista Marina is ours.',
   },
 ];
 
-export function createMissions(ctx) {
-  const { hud, city, spawnCar, graph, save } = ctx;
-  let betweenTimer = 4; // a breath between one job's end and Mara's next call
+let cur = null;      // { def, idx } runtime chapter
+let waitT = 0;       // pickup dwell timer
+let ramHits = 0;
 
-  function startMission(index) {
-    const def = MISSIONS[index];
-    if (!def) { G.storyDone = true; G.mission = null; return; }
-    G.mission = { def, stageIndex: 0, stage: null, data: {} };
-    hud.dialogue(def.intro[0], def.intro[1], def.intro[2], def.intro[3]);
-    setupStage(G.mission, 0);
-  }
+export function initMissions() {
+  G.chapterIdx = 0;
+  G.betweenT = 0;
+}
 
-  function setupStage(m, index) {
-    m.stageIndex = index;
-    const s = { ...m.def.stages[index] };
-    m.stage = s;
-    s.target = s.x != null ? { x: s.x, z: s.z } : null;
-    if (s.type === 'steal') {
-      const car = spawnCar(s.model, s.x, s.z, Math.PI / 2);
-      car.driver = null;
-      car.missionCar = true;
-      if (s.model === 'cabrillo') setCarColor(car, 0xd21f3c); // the showroom GT is red
-      G.cars.push(car);
-      m.data.stealCar = car;
-      s.target = { x: s.x, z: s.z };
-    }
-    if (s.type === 'fight') {
-      m.data.downSet = new Set();
-      let marked = 0;
-      for (const ped of G.peds) {
-        if (marked >= s.count) break;
-        if (Math.hypot(ped.pos.x - s.x, ped.pos.z - s.z) < 60) {
-          ped.marked = true;
-          m.data['ped' + marked] = ped;
-          marked++;
-        }
-      }
-      // an empty beach is no excuse: the debtors stroll in from the boulevard
-      while (marked < s.count) {
-        const ped = G.peds[marked];
-        if (ped) {
-          ped.pos.set(s.x + 4 + marked * 3, 0, s.z + 6);
-          ped.marked = true;
-          m.data['ped' + marked] = ped;
-        }
-        marked++;
-      }
-    }
-    if (s.type === 'ram') {
-      const car = spawnCar(s.model, s.x, s.z, 0);
-      car.driver = 'traffic';
-      car.hp = 260; // armoured: it takes hits, it does not fold
-      car.armoured = true;
-      car.missionConvoy = true;
-      const node = nearestNode(graph, s.x, s.z);
-      car.route = { from: node.key, target: node.adj[0] };
-      car.cruise = 0.55;
-      G.cars.push(car);
-      G.traffic.push(car);
-      m.data.convoy = car;
-      m.data.ramHits = 0;
-      s.target = { x: car.pos.x, z: car.pos.z };
-    }
-    if (s.type === 'lose' && s.stars) {
-      while (G.wanted < s.stars) G.wanted += 1;
-      G.heat = Math.max(G.heat, 0.4);
-    }
-    if (s.target) city.setBeam(s.target.x, s.target.z, 0xffd94d);
-    else city.hideBeam();
-  }
+export function beginStory(fromChapter = 0) {
+  startChapter(Math.min(fromChapter, CHAPTERS.length - 1));
+}
 
-  function completeStage(m) {
-    const next = m.stageIndex + 1;
-    if (next >= m.def.stages.length) { completeMission(m); return; }
-    hud.toast('Objective complete.');
-    sfx.blip();
-    setupStage(m, next);
-  }
+function startChapter(i) {
+  G.chapterIdx = i;
+  const def = CHAPTERS[i];
+  cur = { def, idx: -1 };
+  showDialogue(def.intro[0], def.intro[1], 6);
+  nextStage();
+}
 
-  function completeMission(m) {
-    addCash(m.def.pay);
-    addRep(m.def.rep);
-    G.stats.missionsDone += 1;
-    G.missionIndex += 1;
-    G.mission = null;
-    city.hideBeam();
-    hud.banner('MISSION COMPLETE', `${m.def.title} · +$${m.def.pay.toLocaleString('en-US')}`);
-    hud.dialogue('MARA VOSS', 'FIXER', m.def.outro, 'mara');
-    sfx.cash();
-    save();
-    betweenTimer = 7;
-    if (G.missionIndex >= MISSIONS.length) {
-      G.storyDone = true;
-      setTimeout(() => hud.banner('STORY COMPLETE', 'Vista Marina is yours. Free roam — the city keeps turning.'), 3600);
+function nextStage() {
+  cur.idx += 1;
+  waitT = 0; ramHits = 0;
+  const def = cur.def;
+  if (cur.idx >= def.stages.length) { finishChapter(); return; }
+  const st = def.stages[cur.idx];
+  st.carRef = null; st.thugRefs = null;
+  if (st.spawnCar) {
+    const sc = st.spawnCar;
+    st.carRef = addCar(sc.model, sc.x, sc.z, sc.heading, { parked: true, color: sc.color });
+    if (st.type === "ram") {
+      st.carRef.condition = 100;
+      st.carRef.onBump = (other, rel) => { if (other === G.player.car && rel > 3.5) ramHits += 1; };
     }
   }
+  if (st.thugs) st.thugRefs = st.thugs.map(([x, z]) => addPed(x, z, { hostile: true, color: 0x3a3f47 }));
+  if (st.want) setWanted(Math.max(st.want, G.wanted));
+  if (st.heat) raiseHeat(st.heat);
+  if (st.say) showDialogue(st.say[0], st.say[1], 5.5);
+  publishCard();
+}
 
-  const distTo = (x, z) => Math.hypot(G.player.pos.x - x, G.player.pos.z - z);
-
-  return {
-    startMission,
-    update(dt) {
-      if (!G.mission) {
-        if (!G.storyDone && G.started && G.mode !== 'menu') {
-          betweenTimer -= dt;
-          if (betweenTimer <= 0) startMission(G.missionIndex);
-        }
-        return;
-      }
-      const m = G.mission, s = m.stage;
-      if (!s) return;
-      if (s.type === 'ram' && m.data.convoy) s.target = { x: m.data.convoy.pos.x, z: m.data.convoy.pos.z };
-      if (s.target) city.setBeam(s.target.x, s.target.z, 0xffd94d);
-      switch (s.type) {
-        case 'goto':
-          if (distTo(s.x, s.z) < s.r) completeStage(m);
-          break;
-        case 'steal': {
-          const car = m.data.stealCar;
-          if (car && G.driveCar === car) {
-            if (s.alarm) {
-              while (G.wanted < s.alarm) G.wanted += 1;
-              commitCrime(0.2, 'showroom theft');
-            }
-            completeStage(m);
-          }
-          break;
-        }
-        case 'deliver': {
-          const inRightCar = s.anyVehicle ? true : (m.data.stealCar ? G.driveCar === m.data.stealCar : !!G.driveCar);
-          if (distTo(s.x, s.z) < s.r && inRightCar) completeStage(m);
-          break;
-        }
-        case 'pickup':
-          if (G.mode === 'foot' && distTo(s.x, s.z) < s.r) {
-            if (m.def.title === 'Package Run') {
-              G.hasPistol = true; G.mag = 12; G.reserve = 60;
-              hud.toast("Picked up: package + Mara's pistol (key 2).");
-              hud.refreshWeapons();
-            } else {
-              hud.toast('Case secured.');
-            }
-            if (s.alarm) {
-              while (G.wanted < s.alarm) G.wanted += 1;
-              G.heat = Math.max(G.heat, 0.5);
-            }
-            completeStage(m);
-          }
-          break;
-        case 'pickupAt': {
-          const car = m.data.convoy;
-          if (car && G.mode === 'foot' && Math.hypot(G.player.pos.x - car.pos.x, G.player.pos.z - car.pos.z) < s.r) {
-            hud.toast('Case secured. Now move.');
-            completeStage(m);
-          }
-          break;
-        }
-        case 'lose':
-          if (G.wanted === 0) completeStage(m);
-          break;
-        case 'fight': {
-          let down = 0, total = 0;
-          for (let i = 0; i < s.count; i++) {
-            const ped = m.data['ped' + i];
-            if (!ped) continue;
-            total++;
-            if (ped.state === 'down') m.data.downSet.add(ped.id);
-            if (m.data.downSet.has(ped.id)) down++;
-          }
-          if (total > 0 && down >= total) {
-            for (let i = 0; i < s.count; i++) {
-              const ped = m.data['ped' + i];
-              if (ped) ped.marked = false;
-            }
-            completeStage(m);
-          }
-          break;
-        }
-        case 'ram': {
-          const car = m.data.convoy;
-          if (car && car.lastHit === G.driveCar && car.hitSpeed > 7.5) {
-            car.lastHit = null;
-            m.data.ramHits += 1;
-            hud.toast(`Solid hit — ${m.data.ramHits}/3.`);
-            if (m.data.ramHits >= 3) {
-              car.dead = true; car.speed = 0; car.hp = 0;
-              const ti = G.traffic.indexOf(car);
-              if (ti >= 0) G.traffic.splice(ti, 1);
-              hud.toast('The convoy truck is stopped!');
-              completeStage(m);
-            }
-          }
-          break;
-        }
-      }
-    },
+function publishCard() {
+  const st = cur.def.stages[cur.idx];
+  const following = cur.def.stages[cur.idx + 1];
+  G.mission = {
+    chapter: G.chapterIdx + 1,
+    title: cur.def.title,
+    objective: st ? st.text : "",
+    stage: cur.idx,
+    stages: cur.def.stages.length,
+    next: following ? following.text : "Final stage",
   };
+}
+
+function finishChapter() {
+  const def = cur.def;
+  const p = G.player;
+  p.cash += def.payout;
+  p.rep += def.rep;
+  G.stats.earned += def.payout;
+  sfx("cash"); sfx("mission");
+  showBanner("CHAPTER COMPLETE");
+  toast("+" + def.payout.toLocaleString("en-US") + " · " + def.title);
+  saveGame();
+  const done = G.chapterIdx >= CHAPTERS.length - 1;
+  cur = null;
+  if (done) {
+    G.mission = { chapter: "—", title: "Vista Marina", objective: "The city is yours. Mara's number still works if you want trouble.", stage: 1, stages: 1, next: "" };
+    G.objective = null;
+    showDialogue("MARA", "We're rich, we're infamous, and the tide took the evidence. Drinks on me.", 7);
+  } else {
+    G.betweenT = 4;
+    G.mission = { chapter: G.chapterIdx + 1, title: def.title, objective: "Waiting on Mara's call…", stage: def.stages.length, stages: def.stages.length, next: "" };
+    G.objective = null;
+  }
+}
+
+function stageTarget(st) {
+  if (!st) return null;
+  if (st.followCar && st.carRef) return { x: st.carRef.x, z: st.carRef.z };
+  if ((st.type === "steal" || st.type === "ram") && st.carRef) return { x: st.carRef.x, z: st.carRef.z };
+  if (st.type === "fight" && st.thugRefs) {
+    const alive = st.thugRefs.find((t) => t.state !== "down");
+    if (alive) return { x: alive.x, z: alive.z };
+  }
+  if (st.x !== undefined) return { x: st.x, z: st.z };
+  return null;
+}
+
+function stageDone(st) {
+  const p = G.player;
+  switch (st.type) {
+    case "goto": return dist2D(p.x, p.z, st.x, st.z) < (st.r || 7);
+    case "steal": return st.carRef && p.car === st.carRef;
+    case "deliver": {
+      if (st.carRef && p.car !== st.carRef) return false;
+      if (!p.car) return false;
+      return dist2D(p.x, p.z, st.x, st.z) < (st.r || 8);
+    }
+    case "pickup": {
+      const near = dist2D(p.x, p.z, st.x, st.z) < (st.r || 8) && (st.foot ? !p.car : !!p.car);
+      return near; // dwell handled by caller through waitT
+    }
+    case "lose": return G.wanted === 0;
+    case "fight": return st.thugRefs && st.thugRefs.every((t) => t.state === "down");
+    case "ram": return ramHits >= 3 || (st.carRef && st.carRef.condition < 45);
+    default: return false;
+  }
+}
+
+export function updateMissions(dt) {
+  if (G.betweenT > 0) {
+    G.betweenT -= dt;
+    if (G.betweenT <= 0 && !cur) startChapter(G.chapterIdx + 1);
+    return;
+  }
+  if (!cur) { return; }
+  const st = cur.def.stages[cur.idx];
+  if (!st) return;
+  if (st.followCar) {
+    // the case pickup hugs the rammed Serrano wherever it ended up
+    const prev = CHAPTERS[G.chapterIdx].stages[cur.idx - 1];
+    if (prev && prev.carRef) { st.carRef = prev.carRef; st.x = prev.carRef.x; st.z = prev.carRef.z; }
+  }
+  G.objective = stageTarget(st);
+  if (st.type === "pickup") {
+    const p = G.player;
+    const near = dist2D(p.x, p.z, st.x, st.z) < (st.r || 8) && (st.foot ? !p.car : !!p.car);
+    if (near) {
+      waitT += dt;
+      if (waitT > 2.2) { sfx("blip"); nextStage(); }
+    } else waitT = 0;
+    return;
+  }
+  if (stageDone(st)) { sfx("blip"); nextStage(); }
 }
