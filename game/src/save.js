@@ -1,6 +1,6 @@
-// save.js — localStorage persistence: cash, rep, story progress, the pistol
-// and lifetime stats. Saving is explicit (pause menu) plus an autosave when a
-// mission completes.
+// save.js — the game remembers you in localStorage: cash, reputation, story
+// progress, Mara's pistol and the lifetime stats. Saving is a pause-menu
+// choice, plus an autosave each time a job is completed.
 
 import { G } from './state.js';
 
@@ -16,7 +16,7 @@ export function saveGame() {
     }));
     return true;
   } catch {
-    return false;
+    return false; // private mode and friends — the game goes on unsaved
   }
 }
 
@@ -43,5 +43,5 @@ export function applySave(data) {
 }
 
 export function clearSave() {
-  try { localStorage.removeItem(KEY); } catch { /* private mode */ }
+  try { localStorage.removeItem(KEY); } catch { /* nothing to clear */ }
 }

@@ -1,11 +1,13 @@
-/* Vista Marina — HUD and menu styling. Dark glass panels, neon accents. */
+/* Vista Marina — the HUD's wardrobe: dark glass panels, neon trims, big
+   tabular numbers. Everything is positioned over the 3D canvas; nothing here
+   knows anything about the game, it only dresses the elements hud.js fills. */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0e1a; }
 body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f1ea; }
 #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .hidden { display: none !important; }
 
-/* ---------- shared ---------- */
+/* ---------------- shared pieces ---------------- */
 .panel {
   background: linear-gradient(160deg, rgba(16,18,38,.88), rgba(10,12,28,.82));
   border: 1px solid rgba(255,255,255,.14);
@@ -24,7 +26,7 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 .menu-btn:hover { border-color: #ffb340; color: #ffd98a; }
 .menu-btn.primary { background: linear-gradient(90deg, #ff7847, #ff3d77); border: none; }
 
-/* ---------- mission card ---------- */
+/* ---------------- mission card ---------------- */
 #mission-card { position: fixed; top: 18px; left: 18px; width: 348px; padding: 12px 14px; }
 .mc-top { display: flex; gap: 8px; align-items: baseline; }
 #mc-chapter { background: #ffb340; color: #231303; font-weight: 800; font-size: 12px; padding: 2px 7px; border-radius: 4px; letter-spacing: .06em; }
@@ -38,7 +40,7 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 #mc-next { margin-top: 8px; font-size: 13.5px; color: #d8d4c8; }
 #mc-next b { color: #ffb340; letter-spacing: .08em; font-size: 11px; }
 
-/* ---------- police panel ---------- */
+/* ---------------- police response panel ---------------- */
 #police-panel { position: fixed; top: 196px; left: 18px; width: 348px; padding: 10px 14px 9px; }
 .pp-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid rgba(255,255,255,.14); padding-bottom: 6px; }
 #pp-title { font-weight: 800; letter-spacing: .1em; font-size: 13px; color: #ff8fa3; }
@@ -52,7 +54,7 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 #pp-units .u-tactic.hot { background: #a31631; color: #fff; }
 #pp-note { margin-top: 5px; font-size: 12px; color: #9b968a; }
 
-/* ---------- top-right cluster ---------- */
+/* ---------------- day / money / heat ---------------- */
 #status-cluster { position: fixed; top: 16px; right: 20px; text-align: right; }
 #clock-line { font-weight: 800; letter-spacing: .1em; font-size: 14px; color: #ffd98a; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
 #clock-line #clock-day { background: #ff3d77; padding: 1px 6px; border-radius: 4px; color: #fff; }
@@ -64,7 +66,7 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 #sight-badge { background: #a31631; color: #fff; padding: 2px 7px; border-radius: 4px; font-size: 11px; letter-spacing: .07em; margin-right: 6px; }
 #sight-badge.searching { background: #57434a; }
 
-/* ---------- weapons ---------- */
+/* ---------------- weapon slots ---------------- */
 #weapons { position: fixed; top: 148px; right: 20px; display: flex; gap: 7px; }
 .slot { width: 62px; padding: 6px 0 5px; text-align: center; background: rgba(12,14,30,.78); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; position: relative; }
 .slot.active { border-color: #ffb340; box-shadow: 0 0 0 1px #ffb340, 0 4px 14px rgba(0,0,0,.5); }
@@ -73,7 +75,7 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 .slot-icon { font-size: 21px; display: block; }
 .slot-ammo { font-size: 11.5px; font-weight: 700; color: #e8e4da; }
 
-/* ---------- minimap ---------- */
+/* ---------------- radar / vitals / rep ---------------- */
 #minimap-wrap { position: fixed; left: 18px; bottom: 16px; width: 232px; }
 #minimap { width: 232px; height: 232px; border-radius: 50%; border: 3px solid rgba(255,255,255,.75); box-shadow: 0 8px 26px rgba(0,0,0,.55); background: #17263d; }
 #district { margin-top: 7px; font-weight: 900; letter-spacing: .14em; font-size: 16.5px; text-shadow: 0 2px 6px rgba(0,0,0,.7); }
@@ -87,7 +89,7 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 #rep-name { color: #ffd98a; letter-spacing: .06em; }
 #rep-xp { color: #bdb8ac; font-size: 11.5px; }
 
-/* ---------- vehicle cluster ---------- */
+/* ---------------- vehicle cluster ---------------- */
 #vehicle-cluster { position: fixed; right: 22px; bottom: 18px; text-align: right; }
 #radio-line { font-size: 13px; font-weight: 700; color: #ff9ecf; text-shadow: 0 2px 6px rgba(0,0,0,.6); margin-bottom: 2px; }
 #speedo { line-height: .95; }
@@ -99,14 +101,14 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 #cond-fill { background: #ffd94d; width: 100%; }
 #cond-pct { color: #f4f1ea; font-size: 12px; }
 
-/* ---------- dialogue ---------- */
+/* ---------------- dialogue ---------------- */
 #dialogue { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); width: 560px; display: flex; gap: 12px; padding: 11px 14px; align-items: center; }
 #dlg-portrait { width: 62px; height: 62px; border-radius: 8px; border: 2px solid #ff3d77; flex: none; background: #241631; }
 #dlg-name { font-weight: 900; letter-spacing: .08em; font-size: 14.5px; color: #ff9ecf; }
 #dlg-role { color: #ffb340; font-size: 11px; margin-left: 6px; }
 #dlg-text { font-size: 15.5px; line-height: 1.35; margin-top: 2px; }
 
-/* ---------- center elements ---------- */
+/* ---------------- centre screen ---------------- */
 #prompt { position: fixed; left: 50%; bottom: 19%; transform: translateX(-50%); background: rgba(10,12,26,.85); border: 1px solid rgba(255,255,255,.3); padding: 8px 16px; border-radius: 8px; font-size: 15.5px; font-weight: 700; }
 #prompt b { color: #ffb340; }
 #banner { position: fixed; left: 50%; top: 24%; transform: translateX(-50%); text-align: center; text-shadow: 0 3px 14px rgba(0,0,0,.8); }
@@ -116,7 +118,7 @@ body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #f4f
 #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: rgba(255,255,255,.9); box-shadow: 0 0 6px rgba(0,0,0,.8); }
 #damage-vignette { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px rgba(200,10,30,0); transition: box-shadow .15s; }
 
-/* ---------- start / pause ---------- */
+/* ---------------- start and pause screens ---------------- */
 #start-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(24,10,40,.25), rgba(6,6,18,.72)); z-index: 10; }
 #start-inner { text-align: center; }
 #game-logo { font-size: 84px; font-weight: 900; letter-spacing: .04em; color: #fff; text-shadow: 0 0 34px rgba(255,61,119,.85), 0 4px 0 #123; }

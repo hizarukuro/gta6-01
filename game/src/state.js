@@ -1,23 +1,25 @@
-// state.js — the one central state object for Vista Marina, plus world constants.
-// Every system reads and writes G; nothing keeps a private copy of game truth.
+// state.js — Vista Marina keeps all of its truth in one object, G, defined
+// here together with the fixed facts of the world (road layout, car catalogue,
+// radio dial, district map). Systems import G and mutate it in place; nobody
+// keeps a shadow copy of anything that matters.
 
 export const WORLD = {
-  avenues: [-270, -180, -90, 0, 90, 180, 270], // vertical roads (run along z)
-  streets: [-270, -180, -90, 0, 90, 180, 270], // horizontal roads (run along x)
-  boulevardX: 345,                              // shore road, runs along z
-  beachX: 368,                                  // sand starts east of the boulevard
-  waterX: 436,                                  // open water east of the beach
+  avenues: [-270, -180, -90, 0, 90, 180, 270], // north-south roads, run along z
+  streets: [-270, -180, -90, 0, 90, 180, 270], // east-west roads, run along x
+  boulevardX: 345,   // the shore road, along z
+  beachX: 368,       // sand begins east of the boulevard
+  waterX: 436,       // open water beyond the sand
   island: { cx: 620, cz: -270, xs: [560, 620, 680], zs: [-330, -270, -210] },
-  causewayZ: -270,
-  roadHalf: 7,                                  // half the road width in metres
-  lane: 3.4,                                    // driving lane offset from centre line
+  causewayZ: -270,   // the bridge street to Cayo Verde
+  roadHalf: 7,       // half a road's width, metres
+  lane: 3.4,         // lane offset from a road's centre line
 };
 
 export const CAR_MODELS = {
-  vela:      { name: 'VELA',        kind: 'sedan',   topSpeed: 34, accel: 13, grip: 0.86, price: 0 },
-  serrano:   { name: 'SERRANO',     kind: 'pickup',  topSpeed: 30, accel: 11, grip: 0.8,  price: 0 },
-  cabrillo:  { name: 'CABRILLO GT', kind: 'sports',  topSpeed: 47, accel: 19, grip: 0.92, price: 0 },
-  interceptor: { name: 'INTERCEPTOR', kind: 'police', topSpeed: 42, accel: 17, grip: 0.9, price: 0 },
+  vela:        { name: 'VELA',        kind: 'sedan',   topSpeed: 34, accel: 13, grip: 0.86 },
+  serrano:     { name: 'SERRANO',     kind: 'pickup',  topSpeed: 30, accel: 11, grip: 0.80 },
+  cabrillo:    { name: 'CABRILLO GT', kind: 'sports',  topSpeed: 47, accel: 19, grip: 0.92 },
+  interceptor: { name: 'INTERCEPTOR', kind: 'police',  topSpeed: 42, accel: 17, grip: 0.90 },
 };
 
 export const RADIO_STATIONS = [
@@ -38,46 +40,48 @@ export function districtAt(x, z) {
   return 'VISTA CENTRO';
 }
 
-// The live game state. main.js owns the loop; systems mutate G in place.
+// The live state. main.js owns the frame loop; everything else reads/writes G.
 export const G = {
-  mode: 'menu', // menu | foot | car | pause | busted | wasted
+  mode: 'menu',       // menu | foot | car | pause | busted | wasted
   prevMode: 'foot',
   started: false,
-  time: 17.9, // hour of day, 0..24
+  time: 17.9,         // hour of day, 0..24
   dayName: 'FRI',
   cash: 250,
   rep: 0,
   repLevel: 1,
   health: 100,
   armour: 0,
-  wanted: 0,          // 0..5 stars
-  heat: 0,            // fractional crime heat toward the next star
-  searchTimer: 0,     // seconds since police last saw the player
+  wanted: 0,          // stars, 0..5
+  heat: 0,            // fractional build-up toward the next star
+  searchTimer: 0,     // seconds since a unit last had eyes on the player
   seenByPolice: false,
+  lastSeen: null,     // last position the VMPD confirmed
   bustedMeter: 0,
   weapon: 'fists',    // fists | pistol
   hasPistol: false,
   mag: 12,
   reserve: 132,
   reloading: 0,
-  missionIndex: 0,    // next mission to run (0..6), 7 = story complete
-  mission: null,      // live mission runtime { def, stageIndex, stage, data }
+  missionIndex: 0,    // next story job to offer, 0..6 (7 = chain finished)
+  mission: null,      // live job runtime { def, stageIndex, stage, data }
   storyDone: false,
-  player: null,       // set by player.js: { pos, heading, speed, mesh, inCar }
-  driveCar: null,     // the car the player is driving, if any
-  cars: [],           // every vehicle in the world (traffic, parked, police, mission)
-  traffic: [],        // the subset of cars driven by traffic AI
+  player: null,       // filled in by player.js
+  driveCar: null,     // the car being driven right now, if any
+  cars: [],           // every vehicle that exists
+  traffic: [],        // the cars traffic.js is driving
   peds: [],
-  police: [],         // police units (subset of cars + the helicopter)
-  heli: null,
+  police: [],         // ground units; the helicopter lives in heli
+  heli: null,         // { callsign, tactic, active }
   crimeLog: [],
   stats: { steals: 0, missionsDone: 0, topSpeed: 0, busts: 0 },
-  scene: null,        // debug scene name from ?scene=, or null
+  scene: null,        // ?scene= staging name, or null in real play
   muted: false,
 };
 
+const REP_TITLES = ['BAY RUNNER', 'WHEELMAN', 'GHOST DRIVER', 'NEON GHOST', 'MARINA LEGEND'];
 export function repName(level) {
-  return ['BAY RUNNER', 'WHEELMAN', 'GHOST DRIVER', 'NEON GHOST', 'MARINA LEGEND'][Math.min(4, level - 1)];
+  return REP_TITLES[Math.min(REP_TITLES.length - 1, Math.max(0, level - 1))];
 }
 
 export function addCash(amount) {
@@ -86,12 +90,11 @@ export function addCash(amount) {
 
 export function addRep(amount) {
   G.rep += amount;
-  const need = G.repLevel * 500;
-  if (G.rep >= need && G.repLevel < 5) G.repLevel += 1;
+  if (G.repLevel < 5 && G.rep >= G.repLevel * 500) G.repLevel += 1;
 }
 
-// Crime raises heat; heat crystallises into stars. Losing sight of the police
-// drains heat again (police.js drives the search side of this).
+// Wrongdoing feeds heat; a full point of heat crystallises into a star.
+// police.js runs the other half of the loop (searching cools the heat off).
 export function commitCrime(points, label) {
   if (G.mode !== 'foot' && G.mode !== 'car') return;
   G.heat += points;
@@ -107,4 +110,5 @@ export function clearWanted() {
   G.wanted = 0;
   G.heat = 0;
   G.searchTimer = 0;
+  G.lastSeen = null;
 }

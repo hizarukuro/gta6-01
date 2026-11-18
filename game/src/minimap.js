@@ -1,15 +1,17 @@
-// minimap.js — the circular radar: a north-up slice of the road graph around
-// the player with the beach and island, blips for the mission target, police
-// and traffic, and the district name under the dial (set in hud.js's DOM).
+// minimap.js — the circular radar in the corner: a north-up window onto the
+// road graph around the player, with the shoreline and Cayo Verde painted in,
+// blips for traffic, police, marked pedestrians and the mission target, and
+// the district name refreshed under the dial.
 
 import { WORLD, districtAt } from './state.js';
 
-const RANGE = 165; // metres from centre to rim
+const RANGE = 165; // metres from the player to the rim of the dial
 
 export function createMinimap(graph) {
   const canvas = document.getElementById('minimap');
   const ctx = canvas.getContext('2d');
   const districtEl = document.getElementById('district');
+  // road edges, unpacked once from the graph
   const edges = [];
   for (const n of graph.nodes.values()) {
     for (const k of n.adj) {
@@ -18,10 +20,13 @@ export function createMinimap(graph) {
   }
   let frame = 0;
 
-  function project(x, z, px, pz) {
+  function project(x, z, px, pz, out) {
     const s = (canvas.width / 2) / RANGE;
-    return [canvas.width / 2 + (x - px) * s, canvas.height / 2 + (z - pz) * s];
+    out[0] = canvas.width / 2 + (x - px) * s;
+    out[1] = canvas.height / 2 + (z - pz) * s;
+    return out;
   }
+  const _a = [0, 0], _b = [0, 0];
 
   return {
     draw(G) {
@@ -29,18 +34,18 @@ export function createMinimap(graph) {
       const p = G.player.pos;
       const W = canvas.width, H = canvas.height;
       ctx.clearRect(0, 0, W, H);
-      // land and water
+      // land, then water and sand up the east edge
       ctx.fillStyle = '#1d3a24';
       ctx.fillRect(0, 0, W, H);
+      const [wx] = project(WORLD.waterX, 0, p.x, p.z, _a);
       ctx.fillStyle = '#175d8a';
-      const [wx] = project(WORLD.waterX, 0, p.x, p.z);
       ctx.fillRect(wx, 0, W - wx, H);
+      const [bx] = project(WORLD.beachX, 0, p.x, p.z, _a);
       ctx.fillStyle = '#e6cf9e';
-      const [bx] = project(WORLD.beachX, 0, p.x, p.z);
       ctx.fillRect(bx, 0, Math.max(0, wx - bx), H);
-      // island land
-      const [ix0, iz0] = project(505, -385, p.x, p.z);
-      const [ix1, iz1] = project(735, -155, p.x, p.z);
+      // Cayo Verde
+      const [ix0, iz0] = project(505, -385, p.x, p.z, _a);
+      const [ix1, iz1] = project(735, -155, p.x, p.z, _b);
       ctx.fillStyle = '#1d3a24';
       ctx.fillRect(ix0, iz0, ix1 - ix0, iz1 - iz0);
       // roads
@@ -49,56 +54,67 @@ export function createMinimap(graph) {
       ctx.beginPath();
       for (const [a, b] of edges) {
         if (Math.abs(a.x - p.x) > RANGE + 90 || Math.abs(a.z - p.z) > RANGE + 90) continue;
-        const [ax, ay] = project(a.x, a.z, p.x, p.z);
-        const [cx, cy] = project(b.x, b.z, p.x, p.z);
-        ctx.moveTo(ax, ay); ctx.lineTo(cx, cy);
+        project(a.x, a.z, p.x, p.z, _a);
+        project(b.x, b.z, p.x, p.z, _b);
+        ctx.moveTo(_a[0], _a[1]);
+        ctx.lineTo(_b[0], _b[1]);
       }
       ctx.stroke();
-      // traffic blips
+      // traffic: pale squares
       ctx.fillStyle = 'rgba(255,255,255,0.65)';
       for (const car of G.cars) {
         if (car.driver !== 'traffic') continue;
-        const [x, y] = project(car.pos.x, car.pos.z, p.x, p.z);
-        if (x < 0 || y < 0 || x > W || y > H) continue;
-        ctx.fillRect(x - 1.6, y - 1.6, 3.2, 3.2);
+        project(car.pos.x, car.pos.z, p.x, p.z, _a);
+        if (_a[0] < 0 || _a[1] < 0 || _a[0] > W || _a[1] > H) continue;
+        ctx.fillRect(_a[0] - 1.6, _a[1] - 1.6, 3.2, 3.2);
       }
-      // police blips (flashing)
+      // police: flashing red/blue discs
       const flash = Math.floor(frame / 14) % 2 === 0;
       for (const u of G.police) {
         if (u.kind !== 'car') continue;
-        const [x, y] = project(u.car.pos.x, u.car.pos.z, p.x, p.z);
-        if (x < -6 || y < -6 || x > W + 6 || y > H + 6) continue;
+        project(u.car.pos.x, u.car.pos.z, p.x, p.z, _a);
+        if (_a[0] < -6 || _a[1] < -6 || _a[0] > W + 6 || _a[1] > H + 6) continue;
         ctx.fillStyle = flash ? '#ff3040' : '#3a8dff';
-        ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill();
+        ctx.beginPath();
+        ctx.arc(_a[0], _a[1], 4, 0, 7);
+        ctx.fill();
       }
-      // mission target
-      const target = G.mission?.stage?.target;
+      // the mission target, clamped to the rim when it is far away
+      const target = G.mission && G.mission.stage ? G.mission.stage.target : null;
       if (target) {
-        const [x, y] = project(target.x, target.z, p.x, p.z);
-        const cx = Math.max(10, Math.min(W - 10, x)), cy = Math.max(10, Math.min(H - 10, y));
+        project(target.x, target.z, p.x, p.z, _a);
+        const cx = Math.max(10, Math.min(W - 10, _a[0]));
+        const cy = Math.max(10, Math.min(H - 10, _a[1]));
         ctx.fillStyle = '#ffd94d';
         ctx.save();
-        ctx.translate(cx, cy); ctx.rotate(Math.PI / 4);
+        ctx.translate(cx, cy);
+        ctx.rotate(Math.PI / 4);
         ctx.fillRect(-5.4, -5.4, 10.8, 10.8);
         ctx.restore();
       }
-      // marked peds (mission fights)
+      // mission-marked pedestrians
       ctx.fillStyle = '#ff9040';
       for (const ped of G.peds) {
         if (!ped.marked || ped.state === 'down') continue;
-        const [x, y] = project(ped.pos.x, ped.pos.z, p.x, p.z);
-        ctx.beginPath(); ctx.arc(x, y, 3.4, 0, 7); ctx.fill();
+        project(ped.pos.x, ped.pos.z, p.x, p.z, _a);
+        ctx.beginPath();
+        ctx.arc(_a[0], _a[1], 3.4, 0, 7);
+        ctx.fill();
       }
-      // player arrow
+      // the player arrow, turned to the current heading
       ctx.save();
       ctx.translate(W / 2, H / 2);
       ctx.rotate(G.mode === 'car' && G.driveCar ? G.driveCar.heading : G.player.heading);
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.moveTo(0, -8); ctx.lineTo(5.4, 6.4); ctx.lineTo(0, 3.4); ctx.lineTo(-5.4, 6.4);
-      ctx.closePath(); ctx.fill();
+      ctx.moveTo(0, -8);
+      ctx.lineTo(5.4, 6.4);
+      ctx.lineTo(0, 3.4);
+      ctx.lineTo(-5.4, 6.4);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
-      // north tick
+      // north tick + district name
       ctx.fillStyle = '#ffd94d';
       ctx.font = '900 13px Arial';
       ctx.textAlign = 'center';

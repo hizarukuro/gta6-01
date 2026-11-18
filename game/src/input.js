@@ -1,6 +1,6 @@
-// input.js — keyboard state and mouse-look. Keys are tracked by code so the
-// layout is the same on every machine; edges (justPressed) drive one-shot
-// actions like entering a car or pausing.
+// input.js — raw keyboard and mouse state. Keys are tracked by physical code
+// so the layout holds on any keyboard; one-shot actions read the "just
+// pressed" edge set, which the frame loop clears after every step.
 
 export const keys = new Set();
 const pressed = new Set();
@@ -32,12 +32,6 @@ export function justPressed(code) {
   return pressed.has(code);
 }
 
-export function endFrameInput() {
-  pressed.clear();
-  mouseDX = 0; mouseDY = 0;
-  clickQueued = false;
-}
-
 export function takeMouse() {
   return { dx: mouseDX, dy: mouseDY };
 }
@@ -48,7 +42,14 @@ export function takeClick() {
   return c;
 }
 
-// Driving + walking axes read by player.js and main.js.
+export function endFrameInput() {
+  pressed.clear();
+  mouseDX = 0;
+  mouseDY = 0;
+  clickQueued = false;
+}
+
+// The axes the rest of the game reads: driving doubles as walking.
 export function driveInput() {
   const fwd = keys.has('KeyW') || keys.has('ArrowUp');
   const back = keys.has('KeyS') || keys.has('ArrowDown');

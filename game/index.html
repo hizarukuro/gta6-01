@@ -17,9 +17,9 @@
 <body>
 <canvas id="gl"></canvas>
 
-<!-- ===================== HUD ===================== -->
+<!-- ============================ HUD ============================ -->
 <div id="hud" class="hidden">
-  <!-- mission card -->
+  <!-- the job in hand -->
   <section id="mission-card" class="panel">
     <div class="mc-top"><span id="mc-chapter">CH 1</span><span id="mc-title">FIRST WHEELS</span><span id="mc-timer"></span></div>
     <div id="mc-objective">Steal a Vela sedan.</div>
@@ -27,14 +27,14 @@
     <div id="mc-next"><b>NEXT</b> <span id="mc-next-text"></span></div>
   </section>
 
-  <!-- police response panel -->
+  <!-- who is coming for you, and how far away they are -->
   <section id="police-panel" class="panel">
     <div class="pp-head"><span id="pp-title">VMPD RESPONSE</span><span id="pp-code">CODE 2</span></div>
     <ul id="pp-units"></ul>
     <div id="pp-note"></div>
   </section>
 
-  <!-- top right cluster -->
+  <!-- day, money, heat -->
   <div id="status-cluster">
     <div id="clock-line"><span id="clock-day">FRI</span> <span id="clock-time">18:24</span></div>
     <div id="cash">$250</div>
@@ -42,13 +42,13 @@
     <div id="sight-line"><span id="sight-badge">IN SIGHT</span><span id="sight-unit"></span></div>
   </div>
 
-  <!-- weapon slots -->
+  <!-- hands -->
   <div id="weapons">
     <div class="slot" id="slot-fists"><span class="slot-key">1</span><span class="slot-icon">✊</span><span class="slot-ammo">∞</span></div>
     <div class="slot" id="slot-pistol"><span class="slot-key">2</span><span class="slot-icon">🔫</span><span class="slot-ammo" id="pistol-ammo">12/48</span></div>
   </div>
 
-  <!-- minimap -->
+  <!-- radar, health, reputation -->
   <div id="minimap-wrap">
     <canvas id="minimap" width="232" height="232"></canvas>
     <div id="district">NEON MILE</div>
@@ -59,7 +59,7 @@
     <div id="rep-line"><span id="rep-badge">REP 1</span><span id="rep-name">BAY RUNNER</span><span id="rep-xp">0 / 500</span></div>
   </div>
 
-  <!-- vehicle cluster -->
+  <!-- the car you are in -->
   <div id="vehicle-cluster" class="hidden">
     <div id="radio-line">♪ <span id="radio-name">WAVE 104 · Sunset Synth</span></div>
     <div id="speedo"><span id="speed-num">0</span><span id="speed-unit">KM/H</span></div>
@@ -67,13 +67,13 @@
     <div id="condition-line"><label>CONDITION</label><div class="bar cond"><div id="cond-fill"></div></div><span id="cond-pct">100%</span></div>
   </div>
 
-  <!-- dialogue -->
+  <!-- Mara (usually) has something to say -->
   <section id="dialogue" class="panel hidden">
     <img id="dlg-portrait" alt="">
     <div id="dlg-body"><div id="dlg-name">MARA VOSS <span id="dlg-role">FIXER</span></div><div id="dlg-text"></div></div>
   </section>
 
-  <!-- center prompts and banners -->
+  <!-- centre-screen furniture -->
   <div id="prompt" class="hidden"></div>
   <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
   <div id="toast" class="hidden"></div>
@@ -81,11 +81,11 @@
   <div id="damage-vignette"></div>
 </div>
 
-<!-- ===================== START SCREEN ===================== -->
+<!-- ======================= START SCREEN ======================= -->
 <div id="start-screen">
   <div id="start-inner">
     <div id="game-logo">VISTA<span> MARINA</span></div>
-    <div id="game-tag">An open-world crime game · Neon Mile never sleeps</div>
+    <div id="game-tag">An open-world crime game · the Neon Mile never sleeps</div>
     <div id="menu-buttons">
       <button id="btn-continue" class="menu-btn hidden">CONTINUE — <span id="continue-info"></span></button>
       <button id="btn-new" class="menu-btn primary">NEW GAME</button>
@@ -96,11 +96,11 @@
       <p><b>Click</b> punch or shoot · <b>1 / 2</b> fists / pistol · <b>R</b> reload · <b>Space</b> handbrake</p>
       <p><b>M</b> pause &amp; save · Steal cars, run Mara's jobs, and don't let the VMPD corner you.</p>
     </div>
-    <div id="start-foot">A city of salt air and bad decisions · VMPD patrols day and night</div>
+    <div id="start-foot">A city of salt air and bad decisions · the VMPD patrols day and night</div>
   </div>
 </div>
 
-<!-- ===================== PAUSE / END SCREENS ===================== -->
+<!-- ========================= PAUSE ========================= -->
 <div id="pause-screen" class="hidden">
   <div class="pause-box">
     <h2 id="pause-title">PAUSED</h2>
