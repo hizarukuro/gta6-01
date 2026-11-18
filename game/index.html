@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🌴</text></svg>">
+<title>Vista Marina — an open-world crime game</title>
+<link rel="stylesheet" href="./style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<!-- ===================== HUD ===================== -->
+<div id="hud" class="hidden">
+  <!-- mission card -->
+  <section id="mission-card" class="panel">
+    <div class="mc-top"><span id="mc-chapter">CH 1</span><span id="mc-title">FIRST WHEELS</span><span id="mc-timer"></span></div>
+    <div id="mc-objective">Steal a Vela sedan.</div>
+    <div class="mc-stage"><span id="mc-stage-label">STAGE 1/3</span><div class="bar"><div id="mc-stage-fill"></div></div></div>
+    <div id="mc-next"><b>NEXT</b> <span id="mc-next-text"></span></div>
+  </section>
+
+  <!-- police response panel -->
+  <section id="police-panel" class="panel">
+    <div class="pp-head"><span id="pp-title">VMPD RESPONSE</span><span id="pp-code">CODE 2</span></div>
+    <ul id="pp-units"></ul>
+    <div id="pp-note"></div>
+  </section>
+
+  <!-- top right cluster -->
+  <div id="status-cluster">
+    <div id="clock-line"><span id="clock-day">FRI</span> <span id="clock-time">18:24</span></div>
+    <div id="cash">$250</div>
+    <div id="wanted" aria-label="wanted level"></div>
+    <div id="sight-line"><span id="sight-badge">IN SIGHT</span><span id="sight-unit"></span></div>
+  </div>
+
+  <!-- weapon slots -->
+  <div id="weapons">
+    <div class="slot" id="slot-fists"><span class="slot-key">1</span><span class="slot-icon">✊</span><span class="slot-ammo">∞</span></div>
+    <div class="slot" id="slot-pistol"><span class="slot-key">2</span><span class="slot-icon">🔫</span><span class="slot-ammo" id="pistol-ammo">12/48</span></div>
+  </div>
+
+  <!-- minimap -->
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="232" height="232"></canvas>
+    <div id="district">NEON MILE</div>
+    <div id="vitals">
+      <label>HEALTH</label><div class="bar hp"><div id="hp-fill"></div></div>
+      <label>ARMOUR</label><div class="bar ar"><div id="ar-fill"></div></div>
+    </div>
+    <div id="rep-line"><span id="rep-badge">REP 1</span><span id="rep-name">BAY RUNNER</span><span id="rep-xp">0 / 500</span></div>
+  </div>
+
+  <!-- vehicle cluster -->
+  <div id="vehicle-cluster" class="hidden">
+    <div id="radio-line">♪ <span id="radio-name">WAVE 104 · Sunset Synth</span></div>
+    <div id="speedo"><span id="speed-num">0</span><span id="speed-unit">KM/H</span></div>
+    <div id="vehicle-name">CABRILLO GT</div>
+    <div id="condition-line"><label>CONDITION</label><div class="bar cond"><div id="cond-fill"></div></div><span id="cond-pct">100%</span></div>
+  </div>
+
+  <!-- dialogue -->
+  <section id="dialogue" class="panel hidden">
+    <img id="dlg-portrait" alt="">
+    <div id="dlg-body"><div id="dlg-name">MARA VOSS <span id="dlg-role">FIXER</span></div><div id="dlg-text"></div></div>
+  </section>
+
+  <!-- center prompts and banners -->
+  <div id="prompt" class="hidden"></div>
+  <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
+  <div id="toast" class="hidden"></div>
+  <div id="crosshair" class="hidden"></div>
+  <div id="damage-vignette"></div>
+</div>
+
+<!-- ===================== START SCREEN ===================== -->
+<div id="start-screen">
+  <div id="start-inner">
+    <div id="game-logo">VISTA<span> MARINA</span></div>
+    <div id="game-tag">An open-world crime game · Neon Mile never sleeps</div>
+    <div id="menu-buttons">
+      <button id="btn-continue" class="menu-btn hidden">CONTINUE — <span id="continue-info"></span></button>
+      <button id="btn-new" class="menu-btn primary">NEW GAME</button>
+      <button id="btn-how" class="menu-btn">HOW TO PLAY</button>
+    </div>
+    <div id="howto" class="hidden">
+      <p><b>WASD</b> move / drive · <b>Mouse</b> camera · <b>Shift</b> run · <b>F</b> enter / exit car</p>
+      <p><b>Click</b> punch or shoot · <b>1 / 2</b> fists / pistol · <b>R</b> reload · <b>Space</b> handbrake</p>
+      <p><b>M</b> pause &amp; save · Steal cars, run Mara's jobs, and don't let the VMPD corner you.</p>
+    </div>
+    <div id="start-foot">A city of salt air and bad decisions · VMPD patrols day and night</div>
+  </div>
+</div>
+
+<!-- ===================== PAUSE / END SCREENS ===================== -->
+<div id="pause-screen" class="hidden">
+  <div class="pause-box">
+    <h2 id="pause-title">PAUSED</h2>
+    <p id="pause-stats"></p>
+    <button id="btn-resume" class="menu-btn primary">RESUME</button>
+    <button id="btn-save" class="menu-btn">SAVE &amp; KEEP PLAYING</button>
+    <button id="btn-quit" class="menu-btn">QUIT TO TITLE</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
