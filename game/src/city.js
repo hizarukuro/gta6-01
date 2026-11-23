@@ -134,6 +134,16 @@ const SIGN_WORDS = [
   ["CLUB VELA", "#ff9a3c"], ["PALMS", "#7dff9a"], ["BAR OTRA", "#ff7dd8"],
   ["HOTEL BRISA", "#9fd8ff"], ["NEON", "#ff5e7a"],
 ];
+// Ground-floor shops for the buildings that front the boulevard: a lit
+// window, a name board and a canvas awning at street level, so the Mile
+// reads as a working strip from the road, not a row of blank towers.
+const STOREFRONTS = [
+  ["CAFÉ OLE", "#ffd23c"], ["TACO MAR", "#ff9a3c"], ["SURF CO", "#7dd8ff"],
+  ["PIZZA VELA", "#ff5e7a"], ["DINER LUNA", "#ffe9a8"], ["FARMACIA", "#7dff9a"],
+  ["BAIT & TACKLE", "#9fd8ff"], ["GELATO MIA", "#ff7dd8"], ["BAR MAREA", "#ffb35c"],
+  ["LIBROS SOL", "#ffd9a8"],
+];
+const AWNING_TONES = [0xd8546e, 0x2e8f86, 0xe8a13c, 0x3f6db5, 0x8c2f39];
 const WALL_TONES = ["#4a4152", "#5a4636", "#39424e", "#52424a", "#414a42", "#5d5340"];
 
 function buildBlocks() {
@@ -153,6 +163,7 @@ function buildBlocks() {
     return boxGeoCache.get(k);
   }
   let signIdx = 0;
+  let shopIdx = 0;
   function addBuilding(cx, cz, w, d, h) {
     const mat = variants[Math.floor(rand() * variants.length) % variants.length];
     const m = new THREE.Mesh(boxGeo(w, h, d), [mat, mat, roofMat, roofMat, mat, mat]);
@@ -172,6 +183,31 @@ function buildBlocks() {
       sign.position.set(cx + w / 2 + 0.4, h * randRange(0.55, 0.8), cz);
       sign.rotation.y = Math.PI / 2;
       scene.add(sign);
+    }
+    // Storefront on the boulevard face of Mile buildings whose east wall
+    // stands near the sidewalk: window, name board, awning.
+    if (district === "NEON MILE" && cx + w / 2 >= 222) {
+      const face = cx + w / 2;
+      const [word, color] = STOREFRONTS[shopIdx % STOREFRONTS.length];
+      const awnMat = new THREE.MeshLambertMaterial({ color: AWNING_TONES[shopIdx % AWNING_TONES.length] });
+      shopIdx++;
+      const winMat = new THREE.MeshLambertMaterial({ color: 0x27384a, emissive: 0xffc98a, emissiveIntensity: 0 });
+      dayMats.push(winMat);
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(w * 0.8, 12), 2.5), winMat);
+      win.position.set(face + 0.12, 1.45, cz);
+      win.rotation.y = Math.PI / 2;
+      scene.add(win);
+      const board = new THREE.Mesh(
+        new THREE.PlaneGeometry(Math.min(w * 0.85, 13), 1.7),
+        new THREE.MeshBasicMaterial({ map: signTexture(word, color), transparent: true, side: THREE.DoubleSide, depthWrite: false })
+      );
+      board.position.set(face + 0.25, 3.9, cz);
+      board.rotation.y = Math.PI / 2;
+      scene.add(board);
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, Math.min(w * 0.85, 13)), awnMat);
+      awning.position.set(face + 0.8, 3.0, cz);
+      awning.rotation.z = -0.3;
+      scene.add(awning);
     }
     return m;
   }
@@ -339,9 +375,12 @@ export function updateCity(dt) {
   const px = G.player.x, pz = G.player.z;
   sun.position.set(px + Math.cos(sunAng) * 160, 30 + elev * 150, pz + 60);
   sun.target.position.set(px, 0, pz);
-  sun.intensity = 0.25 + d * 1.5;
-  sun.color.setHSL(0.09 + d * 0.03, 0.75 - d * 0.35, 0.62);
-  hemi.intensity = 0.4 + d * 0.48;
+  sun.intensity = 0.3 + d * 1.5;
+  // A low sun goes golden: hue warms and saturates as the elevation drops,
+  // so late afternoon reads as warm light instead of pale dusk.
+  const warm = clamp(1 - elev * 1.5, 0, 1);
+  sun.color.setHSL(0.115 - warm * 0.04, 0.38 + warm * 0.3, 0.62);
+  hemi.intensity = 0.46 + d * 0.44;
 
   const dark = 1 - d;
   for (const m of dayMats) m.emissiveIntensity = dark * 1.15;

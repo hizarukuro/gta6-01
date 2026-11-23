@@ -108,9 +108,40 @@ export function removeCar(car) {
   if (i >= 0) G.cars.splice(i, 1);
 }
 
+// A wrecked car smoulders: a posed plume of dark spheres over the engine
+// bay and an ember glow at the hood. Static geometry on the car's own
+// group, so it reads in stills and in play alike; attached once, the
+// moment damageCar writes the car off.
+function attachSmoke(car) {
+  const g = new THREE.Group();
+  const fz = car.spec.len * 0.3;
+  const ember = new THREE.Mesh(
+    new THREE.BoxGeometry(0.72, 0.22, 0.9),
+    new THREE.MeshBasicMaterial({ color: 0xff7a2a })
+  );
+  ember.position.set(0, 0.98, fz);
+  g.add(ember);
+  const puffs = [
+    [0, 1.7, fz, 0.65, 0x2c2c30, 0.42], [0.22, 2.5, fz - 0.15, 0.95, 0x3a3a41, 0.34],
+    [-0.18, 3.4, fz - 0.3, 1.3, 0x4a4a52, 0.27], [0.1, 4.5, fz - 0.45, 1.7, 0x5a5a63, 0.2],
+  ];
+  for (const [x, y, z, r, color, opacity] of puffs) {
+    const s = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 8, 6),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })
+    );
+    s.position.set(x, y, z);
+    g.add(s);
+  }
+  car.group.add(g);
+}
+
 export function damageCar(car, amt) {
   car.condition = clamp(car.condition - amt, 0, 100);
-  if (car.condition <= 12) car.wrecked = true;
+  if (car.condition <= 12 && !car.wrecked) {
+    car.wrecked = true;
+    attachSmoke(car);
+  }
 }
 
 // One physics step. throttle -1..1, steer -1..1 (left positive).

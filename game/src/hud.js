@@ -43,9 +43,9 @@ function makePortraits() {
 }
 
 export function initHud() {
-  for (const id of ["hud", "mc-chapter", "mc-title", "mc-objective", "mc-bar-fill", "mc-next",
+  for (const id of ["hud", "mc-chapter", "mc-title", "mc-stage", "mc-objective", "mc-bar-fill", "mc-next",
     "stars", "clock", "cash", "pp-status", "pp-rows", "hp-fill", "ar-fill", "rep-label",
-    "speedo", "speed-val", "veh-name", "veh-cond-fill", "radio",
+    "speedo", "speed-val", "veh-name", "veh-cond-fill", "veh-cond-label", "radio",
     "weap-fists", "weap-pistol", "ammo-label", "dialogue", "dlg-portrait", "dlg-name", "dlg-text",
     "prompt", "banner", "toasts", "bust-wrap", "bust-fill", "fate", "fate-title", "fate-sub"]) {
     el[id] = document.getElementById(id);
@@ -126,6 +126,7 @@ export function updateHud(dt) {
   if (m) {
     el["mc-chapter"].textContent = "CH " + m.chapter;
     el["mc-title"].textContent = m.title;
+    el["mc-stage"].textContent = "STAGE " + Math.min(m.stage + 1, m.stages) + "/" + m.stages;
     el["mc-objective"].textContent = m.objective;
     el["mc-bar-fill"].style.width = Math.round((m.stage / Math.max(1, m.stages)) * 100) + "%";
     el["mc-next"].textContent = m.next ? "NEXT · " + m.next : "";
@@ -153,6 +154,7 @@ export function updateHud(dt) {
     el["speed-val"].textContent = Math.round(Math.abs(p.car.speed) * 3.6);
     el["veh-name"].textContent = p.car.spec.label;
     el["veh-cond-fill"].style.width = Math.max(0, p.car.condition) + "%";
+    el["veh-cond-label"].textContent = Math.round(p.car.condition) + "%";
     el.radio.textContent = RADIO_STATIONS[G.radioIdx];
   } else el.speedo.classList.add("hidden");
 

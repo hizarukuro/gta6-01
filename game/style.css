@@ -18,8 +18,9 @@ body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #f4
 .mc-top { display: flex; gap: 10px; align-items: baseline; }
 #mc-chapter { color: #ffb35c; font-weight: 800; letter-spacing: .12em; font-size: 13px; }
 #mc-title { font-weight: 700; font-size: 16px; letter-spacing: .04em; }
+#mc-stage { margin-left: auto; font-size: 11px; font-weight: 800; letter-spacing: .12em; color: #7dd8ff; white-space: nowrap; }
 #mc-objective { margin-top: 6px; font-size: 13.5px; line-height: 1.35; color: #efe6ff; }
-#mc-bar { margin-top: 8px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+#mc-bar { margin-top: 8px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .14); overflow: hidden; }
 #mc-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff9a3c, #ff5e7a); transition: width .3s; }
 #mc-next { margin-top: 6px; font-size: 11.5px; color: #c9b8ef; letter-spacing: .05em; }
 
@@ -58,11 +59,14 @@ body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #f4
 #speed-val { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
 #speedo .unit { font-size: 11px; color: #c9b8ef; letter-spacing: .12em; }
 #veh-name { font-size: 12.5px; font-weight: 700; letter-spacing: .08em; color: #ffd9a8; margin: 2px 0 6px; }
+#veh-cond-row { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10.5px; letter-spacing: .14em; color: #c9b8ef; }
+#veh-cond-label { color: #d8ff7d; font-weight: 800; }
 #radio { margin-top: 6px; font-size: 10.5px; letter-spacing: .14em; color: #9fd8ff; }
 
 #weapons { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 8px; }
-.weap { min-width: 86px; padding: 8px 10px; border-radius: 8px; background: rgba(16, 8, 34, .72); border: 1px solid rgba(255, 255, 255, .16); text-align: center; }
+.weap { min-width: 96px; padding: 8px 10px; border-radius: 8px; background: rgba(16, 8, 34, .72); border: 1px solid rgba(255, 255, 255, .16); text-align: center; }
 .weap.active { border-color: #ff9a3c; box-shadow: 0 0 14px rgba(255, 154, 60, .35); }
+.weap .wkey { display: inline-block; font-size: 9.5px; font-weight: 800; color: #9fd8ff; border: 1px solid rgba(159, 216, 255, .45); border-radius: 4px; padding: 0 4px; margin-bottom: 3px; }
 .weap .wname { display: block; font-size: 11px; font-weight: 800; letter-spacing: .14em; }
 #ammo-label { font-size: 12px; color: #ffd9a8; font-variant-numeric: tabular-nums; }
 
